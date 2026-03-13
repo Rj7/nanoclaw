@@ -50,6 +50,12 @@ export interface ContainerOutput {
   result: string | null;
   newSessionId?: string;
   error?: string;
+  costUsd?: number;
+  durationMs?: number;
+  durationApiMs?: number;
+  numTurns?: number;
+  inputTokens?: number;
+  outputTokens?: number;
 }
 
 interface VolumeMount {

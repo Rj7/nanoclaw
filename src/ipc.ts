@@ -7,6 +7,7 @@ import { DATA_DIR, IPC_POLL_INTERVAL, TIMEZONE } from './config.js';
 import { AvailableGroup } from './container-runner.js';
 import { createTask, deleteTask, getTaskById, updateTask } from './db.js';
 import { isValidGroupFolder } from './group-folder.js';
+import { handleSubstackIpc } from './substack-integration-host.js';
 import { handleXIpc } from './x-integration-host.js';
 import { logger } from './logger.js';
 import { RegisteredGroup } from './types.js';
@@ -451,12 +452,20 @@ export async function processTaskIpc(
       break;
 
     default: {
-      const handled = await handleXIpc(
+      let handled = await handleXIpc(
         data as Record<string, unknown>,
         sourceGroup,
         isMain,
         DATA_DIR,
       );
+      if (!handled) {
+        handled = await handleSubstackIpc(
+          data as Record<string, unknown>,
+          sourceGroup,
+          isMain,
+          DATA_DIR,
+        );
+      }
       if (!handled) {
         logger.warn({ type: data.type }, 'Unknown IPC task type');
       }

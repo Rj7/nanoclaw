@@ -336,9 +336,10 @@ Use available_groups.json to find the JID for a group. The folder name must be c
 // --- X Integration Tools ---
 
 const X_RESULTS_DIR = path.join(IPC_DIR, 'x_results');
+const SUBSTACK_RESULTS_DIR = path.join(IPC_DIR, 'substack_results');
 
-async function waitForXResult(requestId: string, maxWait = 120000): Promise<{ success: boolean; message: string }> {
-  const resultFile = path.join(X_RESULTS_DIR, `${requestId}.json`);
+async function waitForIpcResult(resultsDir: string, requestId: string, maxWait = 120000): Promise<{ success: boolean; message: string; data?: unknown }> {
+  const resultFile = path.join(resultsDir, `${requestId}.json`);
   const pollInterval = 1000;
   let elapsed = 0;
   while (elapsed < maxWait) {
@@ -358,22 +359,37 @@ async function waitForXResult(requestId: string, maxWait = 120000): Promise<{ su
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function registerXTool(
+function registerIpcTool(
   name: string,
   description: string,
   schema: Record<string, z.ZodType<any>>,
-  buildPayload: (args: any) => Record<string, string>,
+  buildPayload: (args: any) => Record<string, unknown>,
+  resultsDir: string,
 ): void {
   server.tool(name, description, schema, async (args: any) => {
     if (!isMain) {
-      return { content: [{ type: 'text' as const, text: 'Only the main group can interact with X.' }], isError: true };
+      return { content: [{ type: 'text' as const, text: 'Only the main group can use this tool.' }], isError: true };
     }
     const requestId = `${name}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     writeIpcFile(TASKS_DIR, { type: name, requestId, ...buildPayload(args), groupFolder, timestamp: new Date().toISOString() });
-    const result = await waitForXResult(requestId);
-    return { content: [{ type: 'text' as const, text: result.message }], isError: !result.success };
+    const result = await waitForIpcResult(resultsDir, requestId);
+    if (!result.success) {
+      return { content: [{ type: 'text' as const, text: result.message }], isError: true };
+    }
+    // Return data as formatted JSON for the agent to parse
+    const text = result.data
+      ? `${result.message}\n\n${JSON.stringify(result.data, null, 2)}`
+      : result.message;
+    return { content: [{ type: 'text' as const, text }] };
   });
 }
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function registerXTool(name: string, description: string, schema: Record<string, z.ZodType<any>>, buildPayload: (args: any) => Record<string, unknown>): void {
+  registerIpcTool(name, description, schema, buildPayload, X_RESULTS_DIR);
+}
+
+// --- X Write Tools ---
 
 registerXTool('x_post', 'Post a tweet to X (Twitter). Main group only. Max 280 characters.',
   { content: z.string().max(280).describe('The tweet content (max 280 chars)') },
@@ -398,6 +414,32 @@ registerXTool('x_retweet', 'Retweet a tweet on X (Twitter). Main group only.',
 registerXTool('x_quote', 'Quote tweet on X (Twitter). Main group only.',
   { tweet_url: z.string().describe('The tweet URL'), comment: z.string().max(280).describe('Your comment (max 280 chars)') },
   (args) => ({ tweetUrl: args.tweet_url, comment: args.comment }),
+);
+
+// --- X Read Tools ---
+
+registerXTool('x_feed', 'Read your X (Twitter) home timeline — recent posts from accounts you follow. Main group only.',
+  { count: z.number().min(1).max(50).optional().describe('Number of posts (default 20, max 50)') },
+  (args) => ({ count: args.count || 20 }),
+);
+
+registerXTool('x_search', 'Search X (Twitter) for posts matching a query. Main group only.',
+  { query: z.string().describe('Search query string (e.g., "$AAOI" or "AI earnings")'), count: z.number().min(1).max(50).optional().describe('Number of results (default 20, max 50)') },
+  (args) => ({ query: args.query, count: args.count || 20 }),
+);
+
+// --- Substack Read Tools ---
+
+registerIpcTool('substack_inbox', 'Get recent posts from your Substack subscriptions. Main group only.',
+  { count: z.number().min(1).max(30).optional().describe('Number of posts (default 15, max 30)') },
+  (args) => ({ count: args.count || 15 }),
+  SUBSTACK_RESULTS_DIR,
+);
+
+registerIpcTool('substack_read', 'Read a specific Substack article with full text. Works with paid subscriptions. Main group only.',
+  { url: z.string().describe('The Substack article URL') },
+  (args) => ({ url: args.url }),
+  SUBSTACK_RESULTS_DIR,
 );
 
 // Start the stdio transport

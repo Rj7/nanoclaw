@@ -34,6 +34,12 @@ interface ContainerOutput {
   result: string | null;
   newSessionId?: string;
   error?: string;
+  costUsd?: number;
+  durationMs?: number;
+  durationApiMs?: number;
+  numTurns?: number;
+  inputTokens?: number;
+  outputTokens?: number;
 }
 
 interface SessionEntry {
@@ -451,7 +457,18 @@ async function runQuery(
   })) {
     messageCount++;
     const msgType = message.type === 'system' ? `system/${(message as { subtype?: string }).subtype}` : message.type;
-    log(`[msg #${messageCount}] type=${msgType}`);
+
+    // Enhanced observability: log tool calls and text snippets
+    let detail = '';
+    if (message.type === 'assistant' && 'message' in message) {
+      const assistantMsg = message as { message?: { content?: Array<{ type: string; name?: string; text?: string }> } };
+      const content = assistantMsg.message?.content || [];
+      const tools = content.filter(c => c.type === 'tool_use').map(c => c.name).filter(Boolean);
+      const texts = content.filter(c => c.type === 'text' && c.text).map(c => (c.text as string).slice(0, 120));
+      if (tools.length) detail += ` tools=[${tools.join(',')}]`;
+      if (texts.length) detail += ` text="${texts[0]}${texts[0] && texts[0].length >= 120 ? '...' : ''}"`;
+    }
+    log(`[msg #${messageCount}] type=${msgType}${detail}`);
 
     if (message.type === 'assistant' && 'uuid' in message) {
       lastAssistantUuid = (message as { uuid: string }).uuid;
@@ -469,12 +486,27 @@ async function runQuery(
 
     if (message.type === 'result') {
       resultCount++;
-      const textResult = 'result' in message ? (message as { result?: string }).result : null;
-      log(`Result #${resultCount}: subtype=${message.subtype}${textResult ? ` text=${textResult.slice(0, 200)}` : ''}`);
+      const resultMsg = message as {
+        result?: string;
+        subtype: string;
+        total_cost_usd?: number;
+        duration_ms?: number;
+        duration_api_ms?: number;
+        num_turns?: number;
+        usage?: { input_tokens?: number; output_tokens?: number };
+      };
+      const textResult = resultMsg.result || null;
+      log(`Result #${resultCount}: subtype=${resultMsg.subtype} cost=$${resultMsg.total_cost_usd?.toFixed(4) ?? '?'} turns=${resultMsg.num_turns ?? '?'}${textResult ? ` text=${textResult.slice(0, 200)}` : ''}`);
       writeOutput({
         status: 'success',
-        result: textResult || null,
-        newSessionId
+        result: textResult,
+        newSessionId,
+        costUsd: resultMsg.total_cost_usd,
+        durationMs: resultMsg.duration_ms,
+        durationApiMs: resultMsg.duration_api_ms,
+        numTurns: resultMsg.num_turns,
+        inputTokens: resultMsg.usage?.input_tokens,
+        outputTokens: resultMsg.usage?.output_tokens,
       });
     }
   }

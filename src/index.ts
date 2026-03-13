@@ -36,6 +36,7 @@ import {
   getRegisteredGroup,
   getRouterState,
   initDatabase,
+  logAgentRun,
   setRegisteredGroup,
   setRouterState,
   setSession,
@@ -294,12 +295,17 @@ async function runAgent(
     new Set(Object.keys(registeredGroups)),
   );
 
-  // Wrap onOutput to track session ID from streamed results
+  // Wrap onOutput to track session ID and cost from streamed results
+  let lastCostOutput: ContainerOutput | undefined;
+  const startedAt = new Date().toISOString();
   const wrappedOnOutput = onOutput
     ? async (output: ContainerOutput) => {
         if (output.newSessionId) {
           sessions[group.folder] = output.newSessionId;
           setSession(group.folder, output.newSessionId);
+        }
+        if (output.costUsd !== undefined) {
+          lastCostOutput = output;
         }
         await onOutput(output);
       }
@@ -324,6 +330,33 @@ async function runAgent(
     if (output.newSessionId) {
       sessions[group.folder] = output.newSessionId;
       setSession(group.folder, output.newSessionId);
+    }
+
+    // Log cost/usage data — prefer streamed cost (streaming mode returns no cost in final output)
+    const costSource = output.costUsd !== undefined ? output : lastCostOutput;
+    logAgentRun({
+      group_folder: group.folder,
+      chat_jid: chatJid,
+      started_at: startedAt,
+      duration_ms: costSource?.durationMs,
+      duration_api_ms: costSource?.durationApiMs,
+      cost_usd: costSource?.costUsd,
+      input_tokens: costSource?.inputTokens,
+      output_tokens: costSource?.outputTokens,
+      num_turns: costSource?.numTurns,
+      status: output.status,
+    });
+
+    if (costSource?.costUsd !== undefined) {
+      logger.info(
+        {
+          group: group.name,
+          cost: `$${costSource.costUsd.toFixed(4)}`,
+          tokens: `${costSource.inputTokens ?? 0}in/${costSource.outputTokens ?? 0}out`,
+          turns: costSource.numTurns,
+        },
+        'Agent run cost',
+      );
     }
 
     if (output.status === 'error') {

@@ -3,7 +3,8 @@
 
 .PHONY: help status start stop restart logs logs-error logs-setup \
         build dev container memory memory-main memory-global conversations \
-        groups db-groups db-sessions db-tasks test format typecheck clean
+        groups db-groups db-sessions db-tasks test format typecheck clean \
+        agent agents containers cost cost-today cost-week
 
 # ── Service ──────────────────────────────────────────────────
 
@@ -37,6 +38,95 @@ logs-setup: ## View setup log
 logs-agent: ## Tail latest agent container log
 	@latest=$$(ls -t data/sessions/*/logs/container-*.log 2>/dev/null | head -1); \
 	if [ -n "$$latest" ]; then tail -f "$$latest"; else echo "No agent logs found"; fi
+
+agent: ## Show what the agent is currently working on
+	@running=$$(docker ps --filter "name=nanoclaw-" --format "{{.Names}} ({{.RunningFor}})" 2>/dev/null); \
+	if [ -n "$$running" ]; then \
+		echo "\033[36m── Active Container ──\033[0m"; \
+		echo "$$running"; echo ""; \
+		container=$$(docker ps --filter "name=nanoclaw-" --format "{{.Names}}" | head -1); \
+		msgs=$$(docker logs "$$container" 2>&1 | grep -c "\[msg #" 2>/dev/null || echo 0); \
+		echo "Messages processed: $$msgs"; echo ""; \
+		echo "\033[36m── Recent Activity ──\033[0m"; \
+		docker logs "$$container" 2>&1 | grep -E "tools=|text=|Result #|Session init" | tail -15; \
+	else echo "No agent running"; \
+		echo ""; echo "\033[36m── Last Run ──\033[0m"; \
+		sqlite3 -header -column store/messages.db \
+			"SELECT group_folder AS 'group', status, printf('\$$%.4f', cost_usd) AS cost, input_tokens||'in/'||output_tokens||'out' AS tokens, substr(started_at, 1, 19) AS started FROM agent_runs ORDER BY started_at DESC LIMIT 3;" 2>/dev/null || echo "(no runs yet)"; \
+	fi
+
+containers: ## List running agent containers
+	@docker ps --filter "name=nanoclaw-" --format "table {{.Names}}\t{{.Status}}\t{{.RunningFor}}" 2>/dev/null; \
+	count=$$(docker ps --filter "name=nanoclaw-" -q 2>/dev/null | wc -l); \
+	echo ""; echo "$$count container(s) running"
+
+summary: ## Today's activity summary (messages, agent runs, errors)
+	@echo "\033[36m── Today's Summary ──\033[0m"
+	@today=$$(date +%Y-%m-%d); \
+	msgs=$$(sqlite3 store/messages.db "SELECT COUNT(*) FROM messages WHERE timestamp LIKE '$$today%'"); \
+	echo "Messages: $$msgs"; \
+	runs=$$(sqlite3 store/messages.db "SELECT COUNT(*) FROM agent_runs WHERE started_at LIKE '$$today%'" 2>/dev/null || echo 0); \
+	echo "Agent runs: $$runs"; \
+	cost=$$(sqlite3 store/messages.db "SELECT COALESCE(printf('%.4f', SUM(cost_usd)), '0.0000') FROM agent_runs WHERE started_at LIKE '$$today%'" 2>/dev/null || echo "0.0000"); \
+	echo "Cost today: \$$$$cost"; \
+	tokens=$$(sqlite3 store/messages.db "SELECT COALESCE(SUM(input_tokens),0) || ' in / ' || COALESCE(SUM(output_tokens),0) || ' out' FROM agent_runs WHERE started_at LIKE '$$today%'" 2>/dev/null || echo "0 in / 0 out"); \
+	echo "Tokens: $$tokens"; \
+	errors=$$(grep -ci "error" logs/nanoclaw.log 2>/dev/null || echo 0); \
+	echo "Errors in log: $$errors"; \
+	echo ""; \
+	echo "\033[36m── Recent Messages ──\033[0m"; \
+	sqlite3 -column store/messages.db "SELECT substr(sender_name, 1, 12) AS who, substr(content, 1, 70) AS what, substr(timestamp, 12, 5) AS time FROM messages WHERE timestamp LIKE '$$today%' ORDER BY timestamp DESC LIMIT 10;"
+
+# ── Cost ──────────────────────────────────────────────────────
+
+cost: cost-today ## Show today's API cost (alias)
+
+cost-today: ## Today's API cost and token usage
+	@echo "\033[36m── Today's Cost ──\033[0m"
+	@sqlite3 -header -column store/messages.db " \
+		SELECT \
+			group_folder AS 'group', \
+			COUNT(*) AS runs, \
+			COALESCE(printf('\$$%.4f', SUM(cost_usd)), '\$$0') AS cost, \
+			COALESCE(SUM(input_tokens), 0) AS input_tok, \
+			COALESCE(SUM(output_tokens), 0) AS output_tok, \
+			COALESCE(SUM(num_turns), 0) AS turns \
+		FROM agent_runs \
+		WHERE started_at >= date('now') \
+		GROUP BY group_folder \
+		UNION ALL \
+		SELECT '── TOTAL ──', COUNT(*), \
+			COALESCE(printf('\$$%.4f', SUM(cost_usd)), '\$$0'), \
+			COALESCE(SUM(input_tokens), 0), \
+			COALESCE(SUM(output_tokens), 0), \
+			COALESCE(SUM(num_turns), 0) \
+		FROM agent_runs WHERE started_at >= date('now'); \
+	" 2>/dev/null || echo "(no agent_runs table yet — restart service to create it)"
+
+cost-week: ## This week's API cost and token usage
+	@echo "\033[36m── This Week's Cost ──\033[0m"
+	@sqlite3 -header -column store/messages.db " \
+		SELECT \
+			date(started_at) AS day, \
+			COUNT(*) AS runs, \
+			COALESCE(printf('\$$%.4f', SUM(cost_usd)), '\$$0') AS cost, \
+			COALESCE(SUM(input_tokens), 0) AS input_tok, \
+			COALESCE(SUM(output_tokens), 0) AS output_tok \
+		FROM agent_runs \
+		WHERE started_at >= date('now', '-7 days') \
+		GROUP BY date(started_at) \
+		ORDER BY day DESC; \
+	" 2>/dev/null || echo "(no agent_runs table yet — restart service to create it)"
+	@echo ""
+	@echo "\033[36m── Week Total ──\033[0m"
+	@sqlite3 -column store/messages.db " \
+		SELECT \
+			COUNT(*) || ' runs' AS runs, \
+			COALESCE(printf('\$$%.4f', SUM(cost_usd)), '\$$0') AS cost, \
+			COALESCE(SUM(input_tokens), 0) || ' in / ' || COALESCE(SUM(output_tokens), 0) || ' out' AS tokens \
+		FROM agent_runs \
+		WHERE started_at >= date('now', '-7 days'); \
+	" 2>/dev/null || echo "(no data)"
 
 # ── Build ────────────────────────────────────────────────────
 

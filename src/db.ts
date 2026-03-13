@@ -82,6 +82,20 @@ function createSchema(database: Database.Database): void {
       container_config TEXT,
       requires_trigger INTEGER DEFAULT 1
     );
+    CREATE TABLE IF NOT EXISTS agent_runs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      group_folder TEXT NOT NULL,
+      chat_jid TEXT NOT NULL,
+      started_at TEXT NOT NULL,
+      duration_ms INTEGER,
+      duration_api_ms INTEGER,
+      cost_usd REAL,
+      input_tokens INTEGER,
+      output_tokens INTEGER,
+      num_turns INTEGER,
+      status TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_runs_started ON agent_runs(started_at);
   `);
 
   // Add context_mode column if it doesn't exist (migration for existing DBs)
@@ -493,6 +507,39 @@ export function logTaskRun(log: TaskRunLog): void {
     log.status,
     log.result,
     log.error,
+  );
+}
+
+// --- Agent run tracking ---
+
+export interface AgentRunRecord {
+  group_folder: string;
+  chat_jid: string;
+  started_at: string;
+  duration_ms?: number;
+  duration_api_ms?: number;
+  cost_usd?: number;
+  input_tokens?: number;
+  output_tokens?: number;
+  num_turns?: number;
+  status: string;
+}
+
+export function logAgentRun(run: AgentRunRecord): void {
+  db.prepare(
+    `INSERT INTO agent_runs (group_folder, chat_jid, started_at, duration_ms, duration_api_ms, cost_usd, input_tokens, output_tokens, num_turns, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    run.group_folder,
+    run.chat_jid,
+    run.started_at,
+    run.duration_ms ?? null,
+    run.duration_api_ms ?? null,
+    run.cost_usd ?? null,
+    run.input_tokens ?? null,
+    run.output_tokens ?? null,
+    run.num_turns ?? null,
+    run.status,
   );
 }
 
