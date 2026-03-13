@@ -39,6 +39,10 @@ ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
 RUN npm install -g agent-browser @anthropic-ai/claude-code substack-mcp-plus \
     && apt-get purge -y build-essential && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
 
+# Install Python deps for finviz-mcp-server (source mounted at runtime)
+RUN pip3 install --break-system-packages \
+    "mcp>=1.9.1" requests pandas beautifulsoup4 python-dotenv pydantic aiohttp sec-edgar-api
+
 # Create app directory
 WORKDIR /app
 

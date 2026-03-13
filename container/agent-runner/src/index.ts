@@ -408,7 +408,8 @@ async function runQuery(
         'TodoWrite', 'ToolSearch', 'Skill',
         'NotebookEdit',
         'mcp__nanoclaw__*',
-        'mcp__substack__*'
+        'mcp__substack__*',
+        'mcp__finviz__*'
       ],
       env: sdkEnv,
       permissionMode: 'bypassPermissions',
@@ -429,6 +430,15 @@ async function runQuery(
             command: 'substack-mcp-plus',
             env: {
               HOME: '/home/node',
+            },
+          },
+        } : {}),
+        ...(containerInput.isMain && process.env.FINVIZ_API_KEY ? {
+          finviz: {
+            command: 'python3',
+            args: ['-c', 'import sys; sys.path.insert(0, "/opt/finviz-mcp-server"); from src.server import cli_main; cli_main()'],
+            env: {
+              FINVIZ_API_KEY: process.env.FINVIZ_API_KEY,
             },
           },
         } : {}),

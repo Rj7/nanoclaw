@@ -44,6 +44,13 @@
 - Tools: `get_post_content`, `list_published`, `list_drafts`, etc. (main group only)
 - Re-auth: `substack-mcp-plus-setup`
 
+### Finviz (Stock Research)
+- Uses `finviz-mcp-server` from `~/git/finviz-mcp-server` (mounted read-only into container)
+- Python deps installed in container image, source mounted at runtime
+- API key: `FINVIZ_API_KEY` in `.env`
+- Tools: `custom_screener`, `get_stock_fundamentals`, `earnings_screener`, `volume_surge_screener`, `uptrend_screener`, `get_sec_filings`, etc. (main group only)
+- Source: `~/git/finviz-mcp-server` (local clone)
+
 ## Service Management
 
 ```bash

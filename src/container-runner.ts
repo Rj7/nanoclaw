@@ -27,6 +27,7 @@ import {
   stopContainer,
 } from './container-runtime.js';
 import { detectAuthMode } from './credential-proxy.js';
+import { readEnvFile } from './env.js';
 import { validateAdditionalMounts } from './mount-security.js';
 import { RegisteredGroup } from './types.js';
 
@@ -210,6 +211,16 @@ function buildVolumeMounts(
     });
   }
 
+  // Mount finviz-mcp-server source (read-only) for stock research tools
+  const finvizDir = path.join(os.homedir(), 'git', 'finviz-mcp-server');
+  if (isMain && fs.existsSync(finvizDir)) {
+    mounts.push({
+      hostPath: finvizDir,
+      containerPath: '/opt/finviz-mcp-server',
+      readonly: true,
+    });
+  }
+
   // Additional mounts validated against external allowlist (tamper-proof from containers)
   if (group.containerConfig?.additionalMounts) {
     const validatedMounts = validateAdditionalMounts(
@@ -247,6 +258,12 @@ function buildContainerArgs(
     args.push('-e', 'ANTHROPIC_API_KEY=placeholder');
   } else {
     args.push('-e', 'CLAUDE_CODE_OAUTH_TOKEN=placeholder');
+  }
+
+  // Pass optional service API keys (read from .env, not process.env)
+  const serviceKeys = readEnvFile(['FINVIZ_API_KEY']);
+  if (serviceKeys.FINVIZ_API_KEY) {
+    args.push('-e', `FINVIZ_API_KEY=${serviceKeys.FINVIZ_API_KEY}`);
   }
 
   // Runtime-specific args for host gateway resolution
