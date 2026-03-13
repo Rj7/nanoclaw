@@ -333,6 +333,73 @@ Use available_groups.json to find the JID for a group. The folder name must be c
   },
 );
 
+// --- X Integration Tools ---
+
+const X_RESULTS_DIR = path.join(IPC_DIR, 'x_results');
+
+async function waitForXResult(requestId: string, maxWait = 120000): Promise<{ success: boolean; message: string }> {
+  const resultFile = path.join(X_RESULTS_DIR, `${requestId}.json`);
+  const pollInterval = 1000;
+  let elapsed = 0;
+  while (elapsed < maxWait) {
+    if (fs.existsSync(resultFile)) {
+      try {
+        const result = JSON.parse(fs.readFileSync(resultFile, 'utf-8'));
+        fs.unlinkSync(resultFile);
+        return result;
+      } catch (err) {
+        return { success: false, message: `Failed to read result: ${err}` };
+      }
+    }
+    await new Promise(resolve => setTimeout(resolve, pollInterval));
+    elapsed += pollInterval;
+  }
+  return { success: false, message: 'Request timed out' };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function registerXTool(
+  name: string,
+  description: string,
+  schema: Record<string, z.ZodType<any>>,
+  buildPayload: (args: any) => Record<string, string>,
+): void {
+  server.tool(name, description, schema, async (args: any) => {
+    if (!isMain) {
+      return { content: [{ type: 'text' as const, text: 'Only the main group can interact with X.' }], isError: true };
+    }
+    const requestId = `${name}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    writeIpcFile(TASKS_DIR, { type: name, requestId, ...buildPayload(args), groupFolder, timestamp: new Date().toISOString() });
+    const result = await waitForXResult(requestId);
+    return { content: [{ type: 'text' as const, text: result.message }], isError: !result.success };
+  });
+}
+
+registerXTool('x_post', 'Post a tweet to X (Twitter). Main group only. Max 280 characters.',
+  { content: z.string().max(280).describe('The tweet content (max 280 chars)') },
+  (args) => ({ content: args.content }),
+);
+
+registerXTool('x_like', 'Like a tweet on X (Twitter). Main group only.',
+  { tweet_url: z.string().describe('The tweet URL (e.g., https://x.com/user/status/123)') },
+  (args) => ({ tweetUrl: args.tweet_url }),
+);
+
+registerXTool('x_reply', 'Reply to a tweet on X (Twitter). Main group only.',
+  { tweet_url: z.string().describe('The tweet URL'), content: z.string().max(280).describe('The reply content (max 280 chars)') },
+  (args) => ({ tweetUrl: args.tweet_url, content: args.content }),
+);
+
+registerXTool('x_retweet', 'Retweet a tweet on X (Twitter). Main group only.',
+  { tweet_url: z.string().describe('The tweet URL') },
+  (args) => ({ tweetUrl: args.tweet_url }),
+);
+
+registerXTool('x_quote', 'Quote tweet on X (Twitter). Main group only.',
+  { tweet_url: z.string().describe('The tweet URL'), comment: z.string().max(280).describe('Your comment (max 280 chars)') },
+  (args) => ({ tweetUrl: args.tweet_url, comment: args.comment }),
+);
+
 // Start the stdio transport
 const transport = new StdioServerTransport();
 await server.connect(transport);

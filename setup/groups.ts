@@ -111,7 +111,7 @@ async function syncGroups(projectRoot: string): Promise<void> {
   let syncOk = false;
   try {
     const syncScript = `
-import makeWASocket, { useMultiFileAuthState, makeCacheableSignalKeyStore, Browsers } from '@whiskeysockets/baileys';
+import makeWASocket, { useMultiFileAuthState, makeCacheableSignalKeyStore, Browsers, fetchLatestWaWebVersion } from '@whiskeysockets/baileys';
 import pino from 'pino';
 import path from 'path';
 import fs from 'fs';
@@ -136,12 +136,17 @@ const upsert = db.prepare(
 
 const { state, saveCreds } = await useMultiFileAuthState(authDir);
 
+const { version } = await fetchLatestWaWebVersion({}).catch(() => ({ version: undefined }));
+
 const sock = makeWASocket({
+  version,
   auth: { creds: state.creds, keys: makeCacheableSignalKeyStore(state.keys, logger) },
   printQRInTerminal: false,
   logger,
   browser: Browsers.macOS('Chrome'),
 });
+
+let syncDone = false;
 
 const timeout = setTimeout(() => {
   console.error('TIMEOUT');
@@ -163,6 +168,7 @@ sock.ev.on('connection.update', async (update) => {
         }
       }
       console.log('SYNCED:' + count);
+      syncDone = true;
     } catch (err) {
       console.error('FETCH_ERROR:' + err.message);
     } finally {
@@ -172,6 +178,9 @@ sock.ev.on('connection.update', async (update) => {
       process.exit(0);
     }
   } else if (update.connection === 'close') {
+    if (syncDone) {
+      process.exit(0);
+    }
     clearTimeout(timeout);
     console.error('CONNECTION_CLOSED');
     process.exit(1);

@@ -4,6 +4,7 @@
  */
 import { ChildProcess, exec, spawn } from 'child_process';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 
 import {
@@ -198,6 +199,16 @@ function buildVolumeMounts(
     containerPath: '/app/src',
     readonly: false,
   });
+
+  // Mount Substack auth tokens (read-only) for substack-mcp-plus
+  const substackAuthDir = path.join(os.homedir(), '.substack-mcp-plus');
+  if (fs.existsSync(substackAuthDir)) {
+    mounts.push({
+      hostPath: substackAuthDir,
+      containerPath: '/home/node/.substack-mcp-plus',
+      readonly: true,
+    });
+  }
 
   // Additional mounts validated against external allowlist (tamper-proof from containers)
   if (group.containerConfig?.additionalMounts) {
