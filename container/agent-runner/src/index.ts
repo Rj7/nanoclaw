@@ -430,6 +430,7 @@ async function runQuery(
             command: 'substack-mcp-plus',
             env: {
               HOME: '/home/node',
+              SUBSTACK_PUBLICATION_URL: 'https://raja433456.substack.com',
             },
           },
         } : {}),

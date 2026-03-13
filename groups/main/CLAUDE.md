@@ -22,14 +22,12 @@ You have direct X/Twitter tools via MCP. Use these — don't browse x.com manual
 - `mcp__nanoclaw__x_retweet` — retweet (pass the tweet URL)
 - `mcp__nanoclaw__x_quote` — quote tweet with comment (pass URL + comment)
 
-## Substack Tools
+## Substack (Reading Subscriptions)
 
-You have Substack MCP tools to read articles from subscriptions (including paid). Use these for research.
-
-- `mcp__substack__get_post_content` — read full article content
-- `mcp__substack__list_published` — list published posts from a publication
-- `mcp__substack__list_drafts` — list draft posts
-- `mcp__substack__search_posts` — search across posts
+To read paid Substack articles from the user's subscriptions, use `agent-browser` to browse substack.com — the user is logged in. Example workflow:
+1. `agent-browser open https://substack.com/inbox` to see recent posts
+2. Click into an article to read it
+3. Use `agent-browser snapshot` to capture the content
 
 ## Finviz Tools (Stock Research)
 
