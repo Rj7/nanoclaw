@@ -766,13 +766,15 @@ export function getXFeedAuthors(opts?: {
        GROUP BY handle
        ORDER BY tweet_count DESC`,
     )
-    .all(...params) as { handle: string; author: string; tweet_count: number }[];
+    .all(...params) as {
+    handle: string;
+    author: string;
+    tweet_count: number;
+  }[];
 }
 
 export function pruneXFeedTweets(olderThanDays: number): number {
-  const cutoff = new Date(
-    Date.now() - olderThanDays * 86400000,
-  ).toISOString();
+  const cutoff = new Date(Date.now() - olderThanDays * 86400000).toISOString();
   return db
     .prepare('DELETE FROM x_feed_tweets WHERE collected_at < ?')
     .run(cutoff).changes;
@@ -806,6 +808,10 @@ export function setSession(groupFolder: string, sessionId: string): void {
   db.prepare(
     'INSERT OR REPLACE INTO sessions (group_folder, session_id) VALUES (?, ?)',
   ).run(groupFolder, sessionId);
+}
+
+export function deleteSession(groupFolder: string): void {
+  db.prepare('DELETE FROM sessions WHERE group_folder = ?').run(groupFolder);
 }
 
 export function getAllSessions(): Record<string, string> {

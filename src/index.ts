@@ -39,6 +39,7 @@ import {
   logAgentRun,
   setRegisteredGroup,
   setRouterState,
+  deleteSession,
   setSession,
   storeChatMetadata,
   storeMessage,
@@ -59,6 +60,8 @@ import { logger } from './logger.js';
 
 // Re-export for backwards compatibility during refactor
 export { escapeXml, formatMessages } from './router.js';
+
+const NEW_SESSION_PATTERN = /(?:^|\s)\/new\s*$/i;
 
 let lastTimestamp = '';
 let sessions: Record<string, string> = {};
@@ -164,6 +167,20 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   );
 
   if (missedMessages.length === 0) return true;
+
+  // Check for /new session reset command
+  if (missedMessages.some((m) => NEW_SESSION_PATTERN.test(m.content.trim()))) {
+    queue.closeStdin(chatJid);
+    delete sessions[group.folder];
+    deleteSession(group.folder);
+    lastAgentTimestamp[chatJid] =
+      missedMessages[missedMessages.length - 1].timestamp;
+    saveState();
+    const ch = findChannel(channels, chatJid);
+    await ch?.sendMessage(chatJid, 'Session reset. Next message starts fresh.');
+    logger.info({ group: group.name }, 'Session reset by /new command');
+    return true;
+  }
 
   // For non-main groups, check if trigger is required and present
   if (!isMainGroup && group.requiresTrigger !== false) {
@@ -421,6 +438,30 @@ async function startMessageLoop(): Promise<void> {
           }
 
           const isMainGroup = group.isMain === true;
+
+          // Check for /new session reset command
+          if (
+            groupMessages.some((m) =>
+              NEW_SESSION_PATTERN.test(m.content.trim()),
+            )
+          ) {
+            queue.closeStdin(chatJid);
+            delete sessions[group.folder];
+            deleteSession(group.folder);
+            lastAgentTimestamp[chatJid] =
+              groupMessages[groupMessages.length - 1].timestamp;
+            saveState();
+            await channel.sendMessage(
+              chatJid,
+              'Session reset. Next message starts fresh.',
+            );
+            logger.info(
+              { group: group.name },
+              'Session reset by /new command',
+            );
+            continue;
+          }
+
           const needsTrigger = !isMainGroup && group.requiresTrigger !== false;
 
           // For non-main groups, only act on trigger messages.
