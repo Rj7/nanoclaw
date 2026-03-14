@@ -86,6 +86,7 @@ export function startCredentialProxy(
             path: req.url,
             method: req.method,
             headers,
+            agent: false, // Disable connection pooling to avoid stale TLS connections (BAD_RECORD_MAC)
           } as RequestOptions,
           (upRes) => {
             res.writeHead(upRes.statusCode!, upRes.headers);
