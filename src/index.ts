@@ -371,9 +371,19 @@ async function runAgent(
           cost: `$${costSource.costUsd.toFixed(4)}`,
           tokens: `${costSource.inputTokens ?? 0}in/${costSource.outputTokens ?? 0}out`,
           turns: costSource.numTurns,
+          tools: costSource.toolCounts,
         },
         'Agent run cost',
       );
+    } else {
+      // Log tool counts even when cost is unavailable
+      const toolSource = output.toolCounts ? output : lastCostOutput;
+      if (toolSource?.toolCounts && Object.keys(toolSource.toolCounts).length > 0) {
+        logger.info(
+          { group: group.name, tools: toolSource.toolCounts },
+          'Agent run tools (cost unavailable)',
+        );
+      }
     }
 
     if (output.status === 'error') {
@@ -455,10 +465,7 @@ async function startMessageLoop(): Promise<void> {
               chatJid,
               'Session reset. Next message starts fresh.',
             );
-            logger.info(
-              { group: group.name },
-              'Session reset by /new command',
-            );
+            logger.info({ group: group.name }, 'Session reset by /new command');
             continue;
           }
 

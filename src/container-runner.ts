@@ -56,6 +56,7 @@ export interface ContainerOutput {
   numTurns?: number;
   inputTokens?: number;
   outputTokens?: number;
+  toolCounts?: Record<string, number>;
 }
 
 interface VolumeMount {

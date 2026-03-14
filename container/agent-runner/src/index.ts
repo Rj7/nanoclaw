@@ -40,6 +40,7 @@ interface ContainerOutput {
   numTurns?: number;
   inputTokens?: number;
   outputTokens?: number;
+  toolCounts?: Record<string, number>;
 }
 
 interface SessionEntry {
@@ -395,6 +396,8 @@ async function runQuery(
     log(`Additional directories: ${extraDirs.join(', ')}`);
   }
 
+  const toolCounts: Record<string, number> = {};
+
   for await (const message of query({
     prompt: stream,
     options: {
@@ -464,6 +467,9 @@ async function runQuery(
       const assistantMsg = message as { message?: { content?: Array<{ type: string; name?: string; text?: string }> } };
       const content = assistantMsg.message?.content || [];
       const tools = content.filter(c => c.type === 'tool_use').map(c => c.name).filter(Boolean);
+      for (const tool of tools) {
+        toolCounts[tool] = (toolCounts[tool] || 0) + 1;
+      }
       const texts = content.filter(c => c.type === 'text' && c.text).map(c => (c.text as string).slice(0, 120));
       if (tools.length) detail += ` tools=[${tools.join(',')}]`;
       if (texts.length) detail += ` text="${texts[0]}${texts[0] && texts[0].length >= 120 ? '...' : ''}"`;
@@ -486,27 +492,38 @@ async function runQuery(
 
     if (message.type === 'result') {
       resultCount++;
-      const resultMsg = message as {
-        result?: string;
-        subtype: string;
-        total_cost_usd?: number;
-        duration_ms?: number;
-        duration_api_ms?: number;
-        num_turns?: number;
-        usage?: { input_tokens?: number; output_tokens?: number };
-      };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const resultMsg = message as any;
       const textResult = resultMsg.result || null;
-      log(`Result #${resultCount}: subtype=${resultMsg.subtype} cost=$${resultMsg.total_cost_usd?.toFixed(4) ?? '?'} turns=${resultMsg.num_turns ?? '?'}${textResult ? ` text=${textResult.slice(0, 200)}` : ''}`);
+
+      // Log all keys on result message to discover cost field names
+      const keys = Object.keys(resultMsg).filter(k => k !== 'result');
+      log(`Result #${resultCount}: keys=[${keys.join(',')}] subtype=${resultMsg.subtype}${textResult ? ` text=${textResult.slice(0, 200)}` : ''}`);
+
+      // Try known field names for cost data
+      const costUsd = resultMsg.total_cost_usd ?? resultMsg.cost_usd ?? resultMsg.costUsd;
+      const durationMs = resultMsg.duration_ms ?? resultMsg.durationMs;
+      const durationApiMs = resultMsg.duration_api_ms ?? resultMsg.durationApiMs;
+      const numTurns = resultMsg.num_turns ?? resultMsg.numTurns;
+      const usage = resultMsg.usage ?? resultMsg.token_usage;
+      const inputTokens = usage?.input_tokens ?? resultMsg.input_tokens;
+      const outputTokens = usage?.output_tokens ?? resultMsg.output_tokens;
+
+      if (costUsd !== undefined) {
+        log(`Cost: $${costUsd.toFixed(4)} tokens=${inputTokens ?? 0}in/${outputTokens ?? 0}out turns=${numTurns ?? '?'}`);
+      }
+
       writeOutput({
         status: 'success',
         result: textResult,
         newSessionId,
-        costUsd: resultMsg.total_cost_usd,
-        durationMs: resultMsg.duration_ms,
-        durationApiMs: resultMsg.duration_api_ms,
-        numTurns: resultMsg.num_turns,
-        inputTokens: resultMsg.usage?.input_tokens,
-        outputTokens: resultMsg.usage?.output_tokens,
+        costUsd,
+        durationMs,
+        durationApiMs,
+        numTurns,
+        inputTokens,
+        outputTokens,
+        toolCounts: Object.keys(toolCounts).length > 0 ? { ...toolCounts } : undefined,
       });
     }
   }
