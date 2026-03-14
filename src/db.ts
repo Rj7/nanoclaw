@@ -96,6 +96,14 @@ function createSchema(database: Database.Database): void {
       status TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_agent_runs_started ON agent_runs(started_at);
+    CREATE TABLE IF NOT EXISTS x_feed_seen (
+      tweet_url TEXT PRIMARY KEY,
+      author TEXT,
+      handle TEXT,
+      text_preview TEXT,
+      first_seen_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_x_feed_seen_time ON x_feed_seen(first_seen_at);
   `);
 
   // Add context_mode column if it doesn't exist (migration for existing DBs)
@@ -541,6 +549,71 @@ export function logAgentRun(run: AgentRunRecord): void {
     run.num_turns ?? null,
     run.status,
   );
+}
+
+// --- X feed seen tweets ---
+
+export function isXFeedTweetSeen(tweetUrl: string): boolean {
+  const row = db
+    .prepare('SELECT 1 FROM x_feed_seen WHERE tweet_url = ?')
+    .get(tweetUrl);
+  return !!row;
+}
+
+export function getSeenTweetUrls(urls: string[]): Set<string> {
+  if (urls.length === 0) return new Set();
+  const placeholders = urls.map(() => '?').join(',');
+  const rows = db
+    .prepare(
+      `SELECT tweet_url FROM x_feed_seen WHERE tweet_url IN (${placeholders})`,
+    )
+    .all(...urls) as { tweet_url: string }[];
+  return new Set(rows.map((r) => r.tweet_url));
+}
+
+export function markXFeedTweetSeen(tweet: {
+  url: string;
+  author: string;
+  handle: string;
+  text: string;
+}): void {
+  db.prepare(
+    `INSERT OR IGNORE INTO x_feed_seen (tweet_url, author, handle, text_preview, first_seen_at)
+     VALUES (?, ?, ?, ?, ?)`,
+  ).run(
+    tweet.url,
+    tweet.author,
+    tweet.handle,
+    tweet.text.slice(0, 200),
+    new Date().toISOString(),
+  );
+}
+
+export function markXFeedTweetsBatch(
+  tweets: { url: string; author: string; handle: string; text: string }[],
+): void {
+  if (tweets.length === 0) return;
+  const stmt = db.prepare(
+    `INSERT OR IGNORE INTO x_feed_seen (tweet_url, author, handle, text_preview, first_seen_at)
+     VALUES (?, ?, ?, ?, ?)`,
+  );
+  const now = new Date().toISOString();
+  const insertAll = db.transaction(() => {
+    for (const tweet of tweets) {
+      stmt.run(tweet.url, tweet.author, tweet.handle, tweet.text.slice(0, 200), now);
+    }
+  });
+  insertAll();
+}
+
+export function pruneXFeedSeen(olderThanDays: number): number {
+  const cutoff = new Date(
+    Date.now() - olderThanDays * 24 * 60 * 60 * 1000,
+  ).toISOString();
+  const result = db
+    .prepare('DELETE FROM x_feed_seen WHERE first_seen_at < ?')
+    .run(cutoff);
+  return result.changes;
 }
 
 // --- Router state accessors ---

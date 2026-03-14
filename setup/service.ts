@@ -254,6 +254,40 @@ WantedBy=${runningAsRoot ? 'multi-user.target' : 'default.target'}`;
   fs.writeFileSync(unitPath, unit);
   logger.info({ unitPath }, 'Wrote systemd unit');
 
+  // X Feed Monitor companion service
+  const xFeedUnitPath = runningAsRoot
+    ? '/etc/systemd/system/nanoclaw-x-feed.service'
+    : path.join(
+        homeDir,
+        '.config',
+        'systemd',
+        'user',
+        'nanoclaw-x-feed.service',
+      );
+
+  const xFeedUnit = `[Unit]
+Description=NanoClaw X Feed Monitor
+After=nanoclaw.service
+BindsTo=nanoclaw.service
+
+[Service]
+Type=simple
+ExecStart=${nodePath} ${projectRoot}/dist/x-feed-monitor.js
+WorkingDirectory=${projectRoot}
+Restart=always
+RestartSec=30
+Environment=HOME=${homeDir}
+Environment=PATH=/usr/local/bin:/usr/bin:/bin:${homeDir}/.local/bin
+Environment=DISPLAY=:0
+StandardOutput=append:${projectRoot}/logs/x-feed-monitor.log
+StandardError=append:${projectRoot}/logs/x-feed-monitor.error.log
+
+[Install]
+WantedBy=${runningAsRoot ? 'multi-user.target' : 'default.target'}`;
+
+  fs.writeFileSync(xFeedUnitPath, xFeedUnit);
+  logger.info({ xFeedUnitPath }, 'Wrote X feed monitor systemd unit');
+
   // Detect stale docker group before starting (user systemd only)
   const dockerGroupStale = !runningAsRoot && checkDockerGroupStale();
   if (dockerGroupStale) {

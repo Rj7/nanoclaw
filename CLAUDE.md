@@ -20,6 +20,8 @@ Single Node.js process with skill-based channel system. Channels (WhatsApp, Tele
 | `src/db.ts` | SQLite operations |
 | `groups/{name}/CLAUDE.md` | Per-group memory (isolated) |
 | `container/skills/agent-browser.md` | Browser automation tool (available to all agents via Bash) |
+| `src/x-feed-monitor.ts` | Persistent X feed monitor (separate process) |
+| `src/skill-runner.ts` | Shared skill script runner for host IPC handlers |
 
 ## Skills
 
@@ -54,6 +56,15 @@ systemctl --user start nanoclaw
 systemctl --user stop nanoclaw
 systemctl --user restart nanoclaw
 ```
+
+X Feed Monitor (separate process, polls X timeline for stock signals):
+```bash
+make x-feed-setup       # One-time: authenticate browser profile
+make x-feed-start       # Start monitor (systemd)
+make x-feed-stop        # Stop monitor
+make x-feed-logs        # Tail monitor logs
+```
+Config: `data/x-feed-config.yaml` (hot-reloaded — watchlist accounts, tickers, keywords, poll interval).
 
 ## Troubleshooting
 

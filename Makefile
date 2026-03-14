@@ -4,7 +4,8 @@
 .PHONY: help status start stop restart logs logs-error logs-setup \
         build dev container memory memory-main memory-global conversations \
         groups db-groups db-sessions db-tasks test format typecheck clean \
-        agent agents containers cost cost-today cost-week
+        agent agents containers cost cost-today cost-week \
+        x-feed-start x-feed-stop x-feed-status x-feed-logs x-feed-setup
 
 # ── Service ──────────────────────────────────────────────────
 
@@ -127,6 +128,27 @@ cost-week: ## This week's API cost and token usage
 		FROM agent_runs \
 		WHERE started_at >= date('now', '-7 days'); \
 	" 2>/dev/null || echo "(no data)"
+
+# ── X Feed Monitor ────────────────────────────────────────────
+
+x-feed-setup: ## Authenticate the X feed monitor browser profile
+	npm run x-feed-setup
+
+x-feed-start: ## Start X feed monitor (systemd)
+	systemctl --user start nanoclaw-x-feed
+
+x-feed-stop: ## Stop X feed monitor
+	systemctl --user stop nanoclaw-x-feed
+
+x-feed-status: ## X feed monitor status
+	@systemctl --user status nanoclaw-x-feed 2>/dev/null || \
+	(pidfile=data/x-feed-monitor.pid; \
+	if [ -f "$$pidfile" ] && kill -0 $$(cat "$$pidfile") 2>/dev/null; then \
+		echo "Running (PID $$(cat $$pidfile))"; \
+	else echo "Not running"; fi)
+
+x-feed-logs: ## Tail X feed monitor logs
+	@tail -f logs/x-feed-monitor.log 2>/dev/null || echo "No logs yet"
 
 # ── Build ────────────────────────────────────────────────────
 
