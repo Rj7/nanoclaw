@@ -265,6 +265,11 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
       );
       return true;
     }
+    // Notify the user that something went wrong
+    await channel.sendMessage(
+      chatJid,
+      '⚠️ Something went wrong processing your message. Please try again.',
+    );
     // Roll back cursor so retries can re-process these messages
     lastAgentTimestamp[chatJid] = previousCursor;
     saveState();
@@ -378,7 +383,10 @@ async function runAgent(
     } else {
       // Log tool counts even when cost is unavailable
       const toolSource = output.toolCounts ? output : lastCostOutput;
-      if (toolSource?.toolCounts && Object.keys(toolSource.toolCounts).length > 0) {
+      if (
+        toolSource?.toolCounts &&
+        Object.keys(toolSource.toolCounts).length > 0
+      ) {
         logger.info(
           { group: group.name, tools: toolSource.toolCounts },
           'Agent run tools (cost unavailable)',
