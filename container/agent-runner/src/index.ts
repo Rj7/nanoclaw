@@ -466,7 +466,7 @@ async function runQuery(
     if (message.type === 'assistant' && 'message' in message) {
       const assistantMsg = message as { message?: { content?: Array<{ type: string; name?: string; text?: string }> } };
       const content = assistantMsg.message?.content || [];
-      const tools = content.filter(c => c.type === 'tool_use').map(c => c.name).filter(Boolean);
+      const tools = content.filter(c => c.type === 'tool_use').map(c => c.name).filter((n): n is string => !!n);
       for (const tool of tools) {
         toolCounts[tool] = (toolCounts[tool] || 0) + 1;
       }
