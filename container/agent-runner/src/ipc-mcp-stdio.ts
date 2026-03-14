@@ -428,6 +428,38 @@ registerXTool('x_search', 'Search X (Twitter) for posts matching a query. Main g
   (args) => ({ query: args.query, count: args.count || 20 }),
 );
 
+// --- X Feed Query (saved tweets from feed monitor) ---
+
+registerXTool('x_feed_query',
+  'Search tweets from accounts you follow. Queries saved tweets collected 24/7 by the feed monitor. Falls back to fetching the live feed if no saved tweets match. Use this to review tweets about a ticker, from specific authors, or containing keywords over a time range.',
+  {
+    ticker: z.string().optional().describe('Filter by ticker symbol (e.g., "$AAOI", "NVDA")'),
+    author: z.string().optional().describe('Filter by author handle (e.g., "@elonmusk")'),
+    keyword: z.string().optional().describe('Filter by keyword in tweet text'),
+    since_hours: z.number().optional().describe('How many hours back to search (default 24)'),
+    limit: z.number().min(1).max(100).optional().describe('Max results (default 50)'),
+  },
+  (args) => ({
+    ticker: args.ticker,
+    author: args.author,
+    keyword: args.keyword,
+    since_hours: args.since_hours || 24,
+    limit: args.limit || 50,
+  }),
+);
+
+registerXTool('x_feed_authors',
+  'List authors/accounts that have appeared in your X feed. Use this to find handles when you don\'t remember the exact name — search by partial name or handle. Shows tweet count per author.',
+  {
+    search: z.string().optional().describe('Search by partial name or handle (e.g., "chamath", "unusual")'),
+    since_hours: z.number().optional().describe('Only include authors from the last N hours'),
+  },
+  (args) => ({
+    search: args.search,
+    since_hours: args.since_hours,
+  }),
+);
+
 // --- Substack Read Tools ---
 
 registerIpcTool('substack_inbox', 'Get recent posts from your Substack subscriptions. Main group only.',

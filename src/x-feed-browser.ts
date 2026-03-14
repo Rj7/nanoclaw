@@ -41,22 +41,26 @@ export const EXTRACT_TWEETS_JS = `(function() {
   var results = [];
   for (var i = 0; i < articles.length; i++) {
     var article = articles[i];
-    var userNameEl = article.querySelector('[data-testid="User-Name"]');
-    var nameText = userNameEl ? userNameEl.textContent : '';
-    var handleMatch = nameText.match(/@(\\\\w+)/);
-    var handle = handleMatch ? '@' + handleMatch[1] : '';
-    var displayName = nameText.split('@')[0].trim();
-    var tweetTextEl = article.querySelector('[data-testid="tweetText"]');
-    var tweetText = tweetTextEl ? tweetTextEl.textContent : '';
     var timeEl = article.querySelector('time');
     var time = timeEl ? (timeEl.getAttribute('datetime') || '') : '';
     var linkEl = timeEl ? timeEl.closest('a') : null;
     var tweetLink = linkEl ? (linkEl.getAttribute('href') || '') : '';
+    var userNameEl = article.querySelector('[data-testid="User-Name"]');
+    var nameText = userNameEl ? userNameEl.textContent : '';
+    var handleMatch = nameText.match(/@([A-Za-z0-9_]+)/);
+    var handle = handleMatch ? '@' + handleMatch[1] : '';
+    if (!handle && tweetLink) {
+      var urlMatch = tweetLink.match(/^\\/([A-Za-z0-9_]+)\\/status/);
+      if (urlMatch) handle = '@' + urlMatch[1];
+    }
+    var displayName = nameText.split('@')[0].trim();
+    var tweetTextEl = article.querySelector('[data-testid="tweetText"]');
+    var tweetText = tweetTextEl ? tweetTextEl.textContent : '';
     function getMetric(testId) {
       var el = article.querySelector('[data-testid="' + testId + '"]');
       if (!el) return 0;
       var label = el.getAttribute('aria-label') || '';
-      var m = label.match(/(\\\\d[\\\\d,]*)/);
+      var m = label.match(/([0-9][0-9,]*)/);
       return m ? parseInt(m[1].replace(/,/g, ''), 10) : 0;
     }
     results.push({

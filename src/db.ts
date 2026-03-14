@@ -104,6 +104,20 @@ function createSchema(database: Database.Database): void {
       first_seen_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_x_feed_seen_time ON x_feed_seen(first_seen_at);
+    CREATE TABLE IF NOT EXISTS x_feed_tweets (
+      tweet_url TEXT PRIMARY KEY,
+      author TEXT NOT NULL,
+      handle TEXT NOT NULL,
+      text TEXT NOT NULL,
+      tickers TEXT,
+      tweet_time TEXT,
+      likes INTEGER DEFAULT 0,
+      retweets INTEGER DEFAULT 0,
+      replies INTEGER DEFAULT 0,
+      collected_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_x_feed_tweets_collected ON x_feed_tweets(collected_at);
+    CREATE INDEX IF NOT EXISTS idx_x_feed_tweets_handle ON x_feed_tweets(handle);
   `);
 
   // Add context_mode column if it doesn't exist (migration for existing DBs)
@@ -600,7 +614,13 @@ export function markXFeedTweetsBatch(
   const now = new Date().toISOString();
   const insertAll = db.transaction(() => {
     for (const tweet of tweets) {
-      stmt.run(tweet.url, tweet.author, tweet.handle, tweet.text.slice(0, 200), now);
+      stmt.run(
+        tweet.url,
+        tweet.author,
+        tweet.handle,
+        tweet.text.slice(0, 200),
+        now,
+      );
     }
   });
   insertAll();
@@ -614,6 +634,148 @@ export function pruneXFeedSeen(olderThanDays: number): number {
     .prepare('DELETE FROM x_feed_seen WHERE first_seen_at < ?')
     .run(cutoff);
   return result.changes;
+}
+
+// --- X feed tweets (rich storage) ---
+
+export interface XFeedTweetRow {
+  tweet_url: string;
+  author: string;
+  handle: string;
+  text: string;
+  tickers: string | null;
+  tweet_time: string | null;
+  likes: number;
+  retweets: number;
+  replies: number;
+  collected_at: string;
+}
+
+export function saveXFeedTweetsBatch(tweets: XFeedTweetRow[]): number {
+  if (tweets.length === 0) return 0;
+  const stmt = db.prepare(
+    `INSERT OR IGNORE INTO x_feed_tweets (tweet_url, author, handle, text, tickers, tweet_time, likes, retweets, replies, collected_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  );
+  let inserted = 0;
+  const insertAll = db.transaction(() => {
+    for (const t of tweets) {
+      const result = stmt.run(
+        t.tweet_url,
+        t.author,
+        t.handle,
+        t.text,
+        t.tickers,
+        t.tweet_time,
+        t.likes,
+        t.retweets,
+        t.replies,
+        t.collected_at,
+      );
+      inserted += result.changes;
+    }
+  });
+  insertAll();
+  return inserted;
+}
+
+export function getStoredTweetUrls(urls: string[]): Set<string> {
+  if (urls.length === 0) return new Set();
+  const placeholders = urls.map(() => '?').join(',');
+  const rows = db
+    .prepare(
+      `SELECT tweet_url FROM x_feed_tweets WHERE tweet_url IN (${placeholders})`,
+    )
+    .all(...urls) as { tweet_url: string }[];
+  return new Set(rows.map((r) => r.tweet_url));
+}
+
+export function searchXFeedTweets(opts: {
+  ticker?: string;
+  author?: string;
+  keyword?: string;
+  sinceHours?: number;
+  limit?: number;
+}): XFeedTweetRow[] {
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+
+  if (opts.ticker) {
+    conditions.push('tickers LIKE ?');
+    params.push(`%${opts.ticker.toUpperCase()}%`);
+  }
+  if (opts.author) {
+    const handle = opts.author.startsWith('@')
+      ? opts.author
+      : `@${opts.author}`;
+    conditions.push('LOWER(handle) = LOWER(?)');
+    params.push(handle);
+  }
+  if (opts.keyword) {
+    conditions.push('LOWER(text) LIKE LOWER(?)');
+    params.push(`%${opts.keyword}%`);
+  }
+  if (opts.sinceHours) {
+    const since = new Date(
+      Date.now() - opts.sinceHours * 3600000,
+    ).toISOString();
+    conditions.push('collected_at >= ?');
+    params.push(since);
+  }
+
+  const where =
+    conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  const limit = opts.limit || 50;
+  params.push(limit);
+
+  return db
+    .prepare(
+      `SELECT * FROM x_feed_tweets ${where} ORDER BY collected_at DESC LIMIT ?`,
+    )
+    .all(...params) as XFeedTweetRow[];
+}
+
+export function getXFeedAuthors(opts?: {
+  sinceHours?: number;
+  search?: string;
+}): { handle: string; author: string; tweet_count: number }[] {
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+
+  if (opts?.sinceHours) {
+    const since = new Date(
+      Date.now() - opts.sinceHours * 3600000,
+    ).toISOString();
+    conditions.push('collected_at >= ?');
+    params.push(since);
+  }
+  if (opts?.search) {
+    conditions.push(
+      '(LOWER(handle) LIKE LOWER(?) OR LOWER(author) LIKE LOWER(?))',
+    );
+    params.push(`%${opts.search}%`, `%${opts.search}%`);
+  }
+
+  const where =
+    conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  return db
+    .prepare(
+      `SELECT handle, author, COUNT(*) as tweet_count
+       FROM x_feed_tweets ${where}
+       GROUP BY handle
+       ORDER BY tweet_count DESC`,
+    )
+    .all(...params) as { handle: string; author: string; tweet_count: number }[];
+}
+
+export function pruneXFeedTweets(olderThanDays: number): number {
+  const cutoff = new Date(
+    Date.now() - olderThanDays * 86400000,
+  ).toISOString();
+  return db
+    .prepare('DELETE FROM x_feed_tweets WHERE collected_at < ?')
+    .run(cutoff).changes;
 }
 
 // --- Router state accessors ---

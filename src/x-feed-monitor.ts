@@ -1,9 +1,8 @@
 /**
- * X Feed Monitor — Persistent process
+ * X Feed Monitor — Persistent data collector
  *
- * Polls the user's X home timeline every few minutes, detects new posts
- * matching stock signals (tickers, keywords, watchlist accounts), and
- * sends notifications via IPC to the main nanoclaw process.
+ * Polls the user's X home timeline every few minutes and saves ALL tweets
+ * to SQLite for on-demand querying by nanoclaw agents.
  *
  * Usage: node dist/x-feed-monitor.js
  */
@@ -19,42 +18,31 @@ import {
   getConfigPath,
 } from './x-feed-config.js';
 import * as browser from './x-feed-browser.js';
-import { filterTweets } from './x-feed-filter.js';
-import { notifyBatch, writeIpcMessage } from './x-feed-notify.js';
 import {
   initDatabase,
-  getSeenTweetUrls,
-  markXFeedTweetsBatch,
+  getStoredTweetUrls,
+  saveXFeedTweetsBatch,
+  pruneXFeedTweets,
   pruneXFeedSeen,
-  getAllRegisteredGroups,
+  type XFeedTweetRow,
 } from './db.js';
 
 const PID_FILE = path.join(DATA_DIR, 'x-feed-monitor.pid');
-
-function getMainGroupFolder(): string | null {
-  const groups = getAllRegisteredGroups();
-  for (const [, group] of Object.entries(groups)) {
-    if (group.isMain) return group.folder;
-  }
-  // Fallback: first registered group
-  const first = Object.values(groups)[0];
-  return first?.folder || null;
-}
+const TICKER_RE = /\$[A-Z]{1,5}\b/g;
 
 let running = true;
 let pollCount = 0;
 let lastBrowserRestart = Date.now();
 
-async function pollCycle(groupFolder: string): Promise<void> {
+function extractTickers(text: string): string | null {
+  const matches = text.match(TICKER_RE);
+  if (!matches || matches.length === 0) return null;
+  return [...new Set(matches)].join(',');
+}
+
+async function pollCycle(): Promise<void> {
   const config = reloadConfigIfChanged();
   pollCount++;
-
-  if (!config.targetChatJid) {
-    if (pollCount === 1) {
-      logger.warn('No targetChatJid configured — edit ' + getConfigPath());
-    }
-    return;
-  }
 
   // Periodic browser restart to prevent memory leaks
   if (
@@ -74,27 +62,28 @@ async function pollCycle(groupFolder: string): Promise<void> {
 
   const page = await browser.getPage();
 
-  // Navigate to home feed
+  // Navigate to home feed → Following tab
   await page.goto('https://x.com/home', {
     timeout: 30000,
     waitUntil: 'domcontentloaded',
   });
-  await page.waitForTimeout(3000);
+  await page.waitForTimeout(2000);
+
+  // Click "Following" tab (not the default "For you" algorithmic feed)
+  const followingTab = page.locator('a[role="tab"][href="/home"]', {
+    hasText: 'Following',
+  });
+  if (await followingTab.isVisible().catch(() => false)) {
+    await followingTab.click();
+    await page.waitForTimeout(2000);
+  }
 
   // Check login
   const loggedIn = await browser.checkLogin(page);
   if (!loggedIn) {
     logger.error(
-      'X login expired. Authenticate the feed monitor browser profile.',
+      'X login expired. Run `npx tsx src/x-feed-setup.ts` to re-authenticate.',
     );
-    // Notify user
-    writeIpcMessage(
-      config.targetChatJid,
-      '*X Feed Monitor*: Login expired. Run `npx tsx src/x-feed-setup.ts` to re-authenticate.',
-      groupFolder,
-    );
-
-    // Wait longer before retrying
     await sleep(config.authFailureBackoffMs);
     return;
   }
@@ -116,34 +105,46 @@ async function pollCycle(groupFolder: string): Promise<void> {
     return;
   }
 
-  // Batch-check which tweets we've already seen (single query)
+  // Check which tweets we already have
   const tweetUrls = tweets.filter((t) => t.url).map((t) => t.url);
-  const seenUrls = getSeenTweetUrls(tweetUrls);
+  const storedUrls = getStoredTweetUrls(tweetUrls);
 
-  // Filter for signals
-  const matches = filterTweets(tweets, config, (url) => seenUrls.has(url));
-
-  // Batch-mark ALL tweets as seen (single transaction)
-  markXFeedTweetsBatch(tweets.filter((t) => t.url));
-
-  if (matches.length > 0) {
-    logger.info(
-      { matches: matches.length, total: tweets.length, pollCount },
-      'Stock signals detected',
-    );
-    notifyBatch(config.targetChatJid, matches, groupFolder);
-  } else {
-    logger.debug(
-      { total: tweets.length, pollCount },
-      'No matches this cycle',
-    );
+  // Build rows for new tweets only
+  const now = new Date().toISOString();
+  const newTweets: XFeedTweetRow[] = [];
+  for (const tweet of tweets) {
+    if (!tweet.url || !tweet.text || storedUrls.has(tweet.url)) continue;
+    newTweets.push({
+      tweet_url: tweet.url,
+      author: tweet.author,
+      handle: tweet.handle,
+      text: tweet.text,
+      tickers: extractTickers(tweet.text),
+      tweet_time: tweet.time || null,
+      likes: tweet.likes,
+      retweets: tweet.retweets,
+      replies: tweet.replies,
+      collected_at: now,
+    });
   }
 
-  // Prune seen table periodically (every 100 polls ≈ every 5 hours at 3min interval)
+  // Save to database
+  const inserted = saveXFeedTweetsBatch(newTweets);
+  if (inserted > 0) {
+    logger.info(
+      { inserted, total: tweets.length, pollCount },
+      'Saved new tweets',
+    );
+  } else {
+    logger.debug({ total: tweets.length, pollCount }, 'No new tweets');
+  }
+
+  // Prune old data periodically (every 100 polls)
   if (pollCount % 100 === 0) {
-    const pruned = pruneXFeedSeen(7);
-    if (pruned > 0) {
-      logger.info({ pruned }, 'Pruned old seen tweets');
+    const pruned = pruneXFeedTweets(30);
+    const prunedSeen = pruneXFeedSeen(7);
+    if (pruned > 0 || prunedSeen > 0) {
+      logger.info({ pruned, prunedSeen }, 'Pruned old tweets');
     }
   }
 }
@@ -168,34 +169,14 @@ async function main(): Promise<void> {
   fs.writeFileSync(PID_FILE, String(process.pid));
 
   // Load config
-  let config = loadConfig();
+  const config = loadConfig();
   logger.info(
     {
       pollInterval: `${config.pollIntervalMs / 1000}s`,
-      watchlist: config.watchlistAccounts.length,
-      keywords: config.keywords.length,
       configPath: getConfigPath(),
     },
     'Config loaded',
   );
-
-  if (!config.targetChatJid) {
-    logger.error(
-      'targetChatJid not set in config. Edit ' +
-        getConfigPath() +
-        ' and set it to your main group JID.',
-    );
-  }
-
-  // Resolve main group folder for IPC
-  const groupFolder = getMainGroupFolder();
-  if (!groupFolder) {
-    logger.error(
-      'No registered groups found. Start nanoclaw and register a group first.',
-    );
-    process.exit(1);
-  }
-  logger.info({ groupFolder }, 'Using group folder for IPC');
 
   // Graceful shutdown
   const shutdown = async () => {
@@ -213,7 +194,7 @@ async function main(): Promise<void> {
   // Main poll loop
   while (running) {
     try {
-      await pollCycle(groupFolder);
+      await pollCycle();
     } catch (err) {
       logger.error({ err }, 'Poll cycle error');
       // If browser crashed, close it so next cycle relaunches
@@ -223,8 +204,7 @@ async function main(): Promise<void> {
     }
 
     if (running) {
-      config = reloadConfigIfChanged();
-      const interval = addJitter(config.pollIntervalMs);
+      const interval = addJitter(reloadConfigIfChanged().pollIntervalMs);
       await sleep(interval);
     }
   }

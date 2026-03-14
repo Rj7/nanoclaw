@@ -17,11 +17,7 @@ export interface XFeedConfig {
   maxScrolls: number;
   tweetCount: number;
 
-  watchlistAccounts: string[];
   tickerPattern: string;
-  keywords: string[];
-
-  targetChatJid: string;
 
   authFailureBackoffMs: number;
   browserRestartIntervalMs: number;
@@ -34,11 +30,7 @@ const DEFAULTS: XFeedConfig = {
   maxScrolls: 3,
   tweetCount: 25,
 
-  watchlistAccounts: [],
   tickerPattern: '\\$[A-Z]{1,5}\\b',
-  keywords: ['earnings', 'FDA', 'short squeeze', 'gap up', 'breaking'],
-
-  targetChatJid: '',
 
   authFailureBackoffMs: 900_000, // 15 minutes
   browserRestartIntervalMs: 6 * 60 * 60 * 1000, // 6 hours
@@ -64,7 +56,10 @@ export function loadConfig(): XFeedConfig {
     lastMtime = fs.statSync(CONFIG_PATH).mtimeMs;
     return cachedConfig;
   } catch (err) {
-    logger.warn({ err, path: CONFIG_PATH }, 'Failed to parse config, using defaults');
+    logger.warn(
+      { err, path: CONFIG_PATH },
+      'Failed to parse config, using defaults',
+    );
     return cachedConfig;
   }
 }

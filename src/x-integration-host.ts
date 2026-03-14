@@ -11,6 +11,7 @@ import {
   writeIpcResult,
   type SkillResult,
 } from './skill-runner.js';
+import { searchXFeedTweets, getXFeedAuthors } from './db.js';
 
 function runScript(script: string, args: object): Promise<SkillResult> {
   return runSkillScript('x-integration', script, args);
@@ -111,6 +112,59 @@ export async function handleXIpc(
         count: data.count || 20,
       });
       break;
+
+    case 'x_feed_query': {
+      const tweets = searchXFeedTweets({
+        ticker: data.ticker as string | undefined,
+        author: data.author as string | undefined,
+        keyword: data.keyword as string | undefined,
+        sinceHours: (data.since_hours as number) || 24,
+        limit: (data.limit as number) || 50,
+      });
+
+      if (tweets.length > 0) {
+        result = {
+          success: true,
+          message: `Found ${tweets.length} saved tweets`,
+          data: tweets,
+        };
+      } else {
+        // Fallback: fetch live from X using the authenticated browser session
+        logger.info({ requestId }, 'No saved tweets found, fetching live feed');
+        const liveResult = await runScript('feed', {
+          count: (data.limit as number) || 20,
+        });
+        if (liveResult.success) {
+          result = {
+            success: true,
+            message:
+              'No saved tweets matched. Fetched live feed instead (feed monitor may not be running).',
+            data: liveResult.data,
+          };
+        } else {
+          result = {
+            success: true,
+            message:
+              'No saved tweets matched and live fetch failed. Is the feed monitor or X browser session active?',
+            data: [],
+          };
+        }
+      }
+      break;
+    }
+
+    case 'x_feed_authors': {
+      const authors = getXFeedAuthors({
+        sinceHours: (data.since_hours as number) || undefined,
+        search: data.search as string | undefined,
+      });
+      result = {
+        success: true,
+        message: `Found ${authors.length} authors`,
+        data: authors,
+      };
+      break;
+    }
 
     default:
       return false;
