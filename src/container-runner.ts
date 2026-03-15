@@ -228,6 +228,16 @@ function buildVolumeMounts(
     });
   }
 
+  // Mount Obsidian vault for main group (syncs to user's phone)
+  const vaultDir = path.join(os.homedir(), 'Obsidian', 'Rot');
+  if (isMain && fs.existsSync(vaultDir)) {
+    mounts.push({
+      hostPath: vaultDir,
+      containerPath: '/workspace/vault',
+      readonly: false,
+    });
+  }
+
   // Additional mounts validated against external allowlist (tamper-proof from containers)
   if (group.containerConfig?.additionalMounts) {
     const validatedMounts = validateAdditionalMounts(
