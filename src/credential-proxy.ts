@@ -11,8 +11,8 @@
  *             subsequent requests carry the temp key which is valid as-is.
  */
 import { createServer, Server } from 'http';
-import { request as httpsRequest } from 'https';
-import { request as httpRequest, RequestOptions } from 'http';
+import { Agent as HttpsAgent, request as httpsRequest } from 'https';
+import { Agent as HttpAgent, request as httpRequest, RequestOptions } from 'http';
 
 import { readEnvFile } from './env.js';
 import { logger } from './logger.js';
@@ -43,6 +43,12 @@ export function startCredentialProxy(
   );
   const isHttps = upstreamUrl.protocol === 'https:';
   const makeRequest = isHttps ? httpsRequest : httpRequest;
+
+  // Use a custom agent with short idle timeout to prevent stale TLS connections
+  // (BAD_RECORD_MAC errors) while still benefiting from keep-alive pooling.
+  const upstreamAgent = isHttps
+    ? new HttpsAgent({ keepAlive: true, keepAliveMsecs: 5000, timeout: 30000 })
+    : new HttpAgent({ keepAlive: true, keepAliveMsecs: 5000, timeout: 30000 });
 
   return new Promise((resolve, reject) => {
     const server = createServer((req, res) => {
@@ -86,7 +92,7 @@ export function startCredentialProxy(
             path: req.url,
             method: req.method,
             headers,
-            agent: false, // Disable connection pooling to avoid stale TLS connections (BAD_RECORD_MAC)
+            agent: upstreamAgent,
           } as RequestOptions,
           (upRes) => {
             res.writeHead(upRes.statusCode!, upRes.headers);

@@ -496,11 +496,7 @@ async function runQuery(
       const resultMsg = message as any;
       const textResult = resultMsg.result || null;
 
-      // Log all keys on result message to discover cost field names
-      const keys = Object.keys(resultMsg).filter(k => k !== 'result');
-      log(`Result #${resultCount}: keys=[${keys.join(',')}] subtype=${resultMsg.subtype}${textResult ? ` text=${textResult.slice(0, 200)}` : ''}`);
-
-      // Try known field names for cost data
+      // Try known field names for cost data (SDK field names may vary across versions)
       const costUsd = resultMsg.total_cost_usd ?? resultMsg.cost_usd ?? resultMsg.costUsd;
       const durationMs = resultMsg.duration_ms ?? resultMsg.durationMs;
       const durationApiMs = resultMsg.duration_api_ms ?? resultMsg.durationApiMs;
@@ -523,7 +519,7 @@ async function runQuery(
         numTurns,
         inputTokens,
         outputTokens,
-        toolCounts: Object.keys(toolCounts).length > 0 ? { ...toolCounts } : undefined,
+        toolCounts: Object.keys(toolCounts).length > 0 ? toolCounts : undefined,
       });
     }
   }
