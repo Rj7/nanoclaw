@@ -182,8 +182,8 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
     return true;
   }
 
-  // For non-main groups, check if trigger is required and present
-  if (!isMainGroup && group.requiresTrigger !== false) {
+  // Check if trigger is required and present
+  if (group.requiresTrigger !== false) {
     const allowlistCfg = loadSenderAllowlist();
     const hasTrigger = missedMessages.some(
       (m) =>
@@ -209,15 +209,38 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
 
   // Track idle timer for closing stdin when agent is idle
   let idleTimer: ReturnType<typeof setTimeout> | null = null;
+  let shuttingDown = false;
 
   const resetIdleTimer = () => {
     if (idleTimer) clearTimeout(idleTimer);
+    if (shuttingDown) return; // Don't reset during pre-shutdown save
     idleTimer = setTimeout(() => {
-      logger.debug(
-        { group: group.name },
-        'Idle timeout, closing container stdin',
+      // Send a memory-save prompt before shutting down.
+      // Agent response wrapped in <internal> won't be sent to the user.
+      const saved = queue.sendMessage(
+        chatJid,
+        '<system>Session idle timeout. Before shutdown, save any important context, decisions, and conversation highlights to your memory files. Wrap your entire response in <internal> tags.</system>',
       );
-      queue.closeStdin(chatJid);
+      if (saved) {
+        shuttingDown = true;
+        logger.info(
+          { group: group.name },
+          'Idle timeout, sent pre-shutdown memory save prompt',
+        );
+        // Give agent 60s to save, then close and clear session
+        idleTimer = setTimeout(() => {
+          logger.info(
+            { group: group.name },
+            'Pre-shutdown save complete, closing container and clearing session',
+          );
+          queue.closeStdin(chatJid);
+          delete sessions[group.folder];
+          deleteSession(group.folder);
+        }, 60_000);
+      } else {
+        // No active container to save to, just close
+        queue.closeStdin(chatJid);
+      }
     }, IDLE_TIMEOUT);
   };
 
@@ -477,9 +500,9 @@ async function startMessageLoop(): Promise<void> {
             continue;
           }
 
-          const needsTrigger = !isMainGroup && group.requiresTrigger !== false;
+          const needsTrigger = group.requiresTrigger !== false;
 
-          // For non-main groups, only act on trigger messages.
+          // Only act on trigger messages.
           // Non-trigger messages accumulate in DB and get pulled as
           // context when a trigger eventually arrives.
           if (needsTrigger) {
