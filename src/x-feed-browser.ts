@@ -54,8 +54,14 @@ export const EXTRACT_TWEETS_JS = `(function() {
       if (urlMatch) handle = '@' + urlMatch[1];
     }
     var displayName = nameText.split('@')[0].trim();
-    var tweetTextEl = article.querySelector('[data-testid="tweetText"]');
-    var tweetText = tweetTextEl ? tweetTextEl.textContent : '';
+    var tweetTextEls = article.querySelectorAll('[data-testid="tweetText"]');
+    var mainText = tweetTextEls.length > 0 ? tweetTextEls[0].textContent : '';
+    var quotedText = '';
+    if (tweetTextEls.length > 1) {
+      var qt = tweetTextEls[tweetTextEls.length - 1].textContent || '';
+      if (qt && qt !== mainText) quotedText = qt;
+    }
+    var tweetText = quotedText ? mainText + '\\n[Quoted] ' + quotedText : mainText;
     function getMetric(testId) {
       var el = article.querySelector('[data-testid="' + testId + '"]');
       if (!el) return 0;
@@ -65,6 +71,7 @@ export const EXTRACT_TWEETS_JS = `(function() {
     }
     results.push({
       author: displayName, handle: handle, text: tweetText,
+      quotedText: quotedText,
       url: tweetLink ? 'https://x.com' + tweetLink : '',
       time: time, likes: getMetric('like'), retweets: getMetric('retweet'), replies: getMetric('reply')
     });
@@ -76,6 +83,7 @@ export interface TweetData {
   author: string;
   handle: string;
   text: string;
+  quotedText: string;
   url: string;
   time: string;
   likes: number;
