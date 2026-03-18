@@ -54,6 +54,12 @@ export class WhatsAppChannel implements Channel {
     this.opts = opts;
   }
 
+  /** Get the assistant name for a specific JID (per-group or global default) */
+  private getAssistantNameForJid(jid: string): string {
+    const groups = this.opts.registeredGroups();
+    return groups[jid]?.assistantName || ASSISTANT_NAME;
+  }
+
   async connect(): Promise<void> {
     return new Promise<void>((resolve, reject) => {
       this.connectInternal(resolve).catch(reject);
@@ -235,9 +241,11 @@ export class WhatsAppChannel implements Channel {
             // since only the bot sends from that number.
             // With shared number, bot messages carry the assistant name prefix
             // (even in DMs/self-chat) so we check for that.
+            // Check if message is from this group's bot name
+            const botName = this.getAssistantNameForJid(chatJid);
             const isBotMessage = ASSISTANT_HAS_OWN_NUMBER
               ? fromMe
-              : content.startsWith(`${ASSISTANT_NAME}:`);
+              : content.startsWith(`${botName}:`);
 
             this.opts.onMessage(chatJid, {
               id: msg.key.id || '',
@@ -262,12 +270,9 @@ export class WhatsAppChannel implements Channel {
 
   async sendMessage(jid: string, text: string): Promise<void> {
     // Prefix bot messages with assistant name so users know who's speaking.
-    // On a shared number, prefix is also needed in DMs (including self-chat)
-    // to distinguish bot output from user messages.
-    // Skip only when the assistant has its own dedicated phone number.
-    const prefixed = ASSISTANT_HAS_OWN_NUMBER
-      ? text
-      : `${ASSISTANT_NAME}: ${text}`;
+    // Uses per-group name if configured, otherwise the global default.
+    const name = this.getAssistantNameForJid(jid);
+    const prefixed = ASSISTANT_HAS_OWN_NUMBER ? text : `${name}: ${text}`;
 
     if (!this.connected) {
       this.outgoingQueue.push({ jid, text: prefixed });

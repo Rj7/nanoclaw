@@ -458,6 +458,7 @@ describe('registered group isMain', () => {
       folder: 'whatsapp_main',
       trigger: '@Andy',
       added_at: '2024-01-01T00:00:00.000Z',
+      assistantName: 'Andy',
       isMain: true,
     });
 
@@ -474,6 +475,7 @@ describe('registered group isMain', () => {
       folder: 'whatsapp_family-chat',
       trigger: '@Andy',
       added_at: '2024-01-01T00:00:00.000Z',
+      assistantName: 'Andy',
     });
 
     const groups = getAllRegisteredGroups();

@@ -45,6 +45,7 @@ import {
 } from './db.js';
 import { GroupQueue } from './group-queue.js';
 import { resolveGroupFolderPath } from './group-folder.js';
+import { startFeedHealthMonitor } from './feed-health-monitor.js';
 import { startIpcWatcher } from './ipc.js';
 import { findChannel, formatMessages, formatOutbound } from './router.js';
 import {
@@ -163,7 +164,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   const missedMessages = getMessagesSince(
     chatJid,
     sinceTimestamp,
-    ASSISTANT_NAME,
+    group.assistantName,
   );
 
   if (missedMessages.length === 0) return true;
@@ -376,7 +377,7 @@ async function runAgent(
         groupFolder: group.folder,
         chatJid,
         isMain,
-        assistantName: ASSISTANT_NAME,
+        assistantName: group.assistantName,
         ...(imageAttachments.length > 0 && { imageAttachments }),
       },
       (proc, containerName) =>
@@ -533,7 +534,7 @@ async function startMessageLoop(): Promise<void> {
           const allPending = getMessagesSince(
             chatJid,
             lastAgentTimestamp[chatJid] || '',
-            ASSISTANT_NAME,
+            group.assistantName,
           );
           const messagesToSend =
             allPending.length > 0 ? allPending : groupMessages;
@@ -573,7 +574,7 @@ async function startMessageLoop(): Promise<void> {
 function recoverPendingMessages(): void {
   for (const [chatJid, group] of Object.entries(registeredGroups)) {
     const sinceTimestamp = lastAgentTimestamp[chatJid] || '';
-    const pending = getMessagesSince(chatJid, sinceTimestamp, ASSISTANT_NAME);
+    const pending = getMessagesSince(chatJid, sinceTimestamp, group.assistantName);
     if (pending.length > 0) {
       logger.info(
         { group: group.name, pendingCount: pending.length },
@@ -700,6 +701,20 @@ async function main(): Promise<void> {
     writeGroupsSnapshot: (gf, im, ag, rj) =>
       writeGroupsSnapshot(gf, im, ag, rj),
   });
+  // Feed health monitor — alerts to main group if feed monitors go stale
+  const mainGroupEntry = Object.entries(registeredGroups).find(
+    ([, g]) => g.isMain,
+  );
+  if (mainGroupEntry) {
+    const [mainJid] = mainGroupEntry;
+    startFeedHealthMonitor({
+      sendAlert: async (text) => {
+        const channel = findChannel(channels, mainJid);
+        if (channel) await channel.sendMessage(mainJid, text);
+      },
+    });
+  }
+
   queue.setProcessMessagesFn(processGroupMessages);
   recoverPendingMessages();
   startMessageLoop().catch((err) => {

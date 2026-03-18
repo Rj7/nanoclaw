@@ -94,6 +94,7 @@ const testGroup: RegisteredGroup = {
   folder: 'test-group',
   trigger: '@Andy',
   added_at: new Date().toISOString(),
+  assistantName: 'Andy',
 };
 
 const testInput = {

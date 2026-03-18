@@ -279,9 +279,25 @@ function buildContainerArgs(
   }
 
   // Pass optional service API keys (read from .env, not process.env)
-  const serviceKeys = readEnvFile(['FINVIZ_API_KEY']);
-  if (serviceKeys.FINVIZ_API_KEY) {
-    args.push('-e', `FINVIZ_API_KEY=${serviceKeys.FINVIZ_API_KEY}`);
+  const globalKeys = readEnvFile(['FINVIZ_API_KEY']);
+  for (const [key, value] of Object.entries(globalKeys)) {
+    if (value) args.push('-e', `${key}=${value}`);
+  }
+
+  // Pass IBKR keys only to containers that have the portfolio mount
+  const hasPortfolioMount = mounts.some((m) =>
+    m.containerPath.includes('portfolio'),
+  );
+  if (hasPortfolioMount) {
+    const ibkrKeys = readEnvFile([
+      'IBKR_FLEX_QUERY_TOKEN',
+      'IBKR_FLEX_QUERY_ID',
+      'IBKR_ACCOUNT_ID',
+      'TRADING_JOURNAL_DATABASE_URL',
+    ]);
+    for (const [key, value] of Object.entries(ibkrKeys)) {
+      if (value) args.push('-e', `${key}=${value}`);
+    }
   }
 
   // Runtime-specific args for host gateway resolution

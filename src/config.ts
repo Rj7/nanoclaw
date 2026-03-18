@@ -70,6 +70,11 @@ export const TRIGGER_PATTERN = new RegExp(
   'i',
 );
 
+// Feed health monitor: alert if no new data collected within these windows
+export const FEED_HEALTH_CHECK_INTERVAL = 30 * 60 * 1000; // 30 minutes
+export const X_FEED_STALE_THRESHOLD_MS = 6 * 60 * 60 * 1000; // 6 hours
+export const SUBSTACK_FEED_STALE_THRESHOLD_MS = 48 * 60 * 60 * 1000; // 48 hours
+
 // Timezone for scheduled tasks (cron expressions, etc.)
 // Uses system timezone by default
 export const TIMEZONE =
