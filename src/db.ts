@@ -192,12 +192,8 @@ function createSchema(database: Database.Database): void {
 
   // Add content/images/word_count columns to substack_feed_posts (migration)
   try {
-    database.exec(
-      `ALTER TABLE substack_feed_posts ADD COLUMN content TEXT`,
-    );
-    database.exec(
-      `ALTER TABLE substack_feed_posts ADD COLUMN images TEXT`,
-    );
+    database.exec(`ALTER TABLE substack_feed_posts ADD COLUMN content TEXT`);
+    database.exec(`ALTER TABLE substack_feed_posts ADD COLUMN images TEXT`);
     database.exec(
       `ALTER TABLE substack_feed_posts ADD COLUMN word_count INTEGER DEFAULT 0`,
     );
@@ -884,7 +880,9 @@ export function searchSubstackFeedPosts(opts: {
     params.push(`%${opts.publication}%`);
   }
   if (opts.keyword) {
-    conditions.push('(LOWER(title) LIKE LOWER(?) OR LOWER(snippet) LIKE LOWER(?))');
+    conditions.push(
+      '(LOWER(title) LIKE LOWER(?) OR LOWER(snippet) LIKE LOWER(?))',
+    );
     params.push(`%${opts.keyword}%`, `%${opts.keyword}%`);
   }
   if (opts.sinceHours) {
@@ -946,9 +944,7 @@ export function getSubstackFeedPublications(opts?: {
 }
 
 export function pruneSubstackFeedPosts(olderThanDays: number): number {
-  const cutoff = new Date(
-    Date.now() - olderThanDays * 86400000,
-  ).toISOString();
+  const cutoff = new Date(Date.now() - olderThanDays * 86400000).toISOString();
   return db
     .prepare('DELETE FROM substack_feed_posts WHERE collected_at < ?')
     .run(cutoff).changes;

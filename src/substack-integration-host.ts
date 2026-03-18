@@ -5,10 +5,7 @@
  * Uses Playwright on the host with a persistent browser profile.
  */
 
-import {
-  searchSubstackFeedPosts,
-  getSubstackFeedPublications,
-} from './db.js';
+import { searchSubstackFeedPosts, getSubstackFeedPublications } from './db.js';
 import { logger } from './logger.js';
 import {
   runSkillScript,
