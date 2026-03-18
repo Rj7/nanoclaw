@@ -474,6 +474,40 @@ registerIpcTool('substack_read', 'Read a specific Substack article with full tex
   SUBSTACK_RESULTS_DIR,
 );
 
+// --- Substack Feed Query (saved posts from feed monitor) ---
+
+registerIpcTool('substack_feed_query',
+  'Search posts from your Substack subscriptions. Queries posts collected by the feed monitor. Falls back to fetching the live inbox if no saved posts match. Use to find articles by author, publication, or keyword over a time range.',
+  {
+    author: z.string().optional().describe('Filter by author name'),
+    publication: z.string().optional().describe('Filter by publication name'),
+    keyword: z.string().optional().describe('Filter by keyword in title or snippet'),
+    since_hours: z.number().optional().describe('How many hours back to search (default 168 = 1 week)'),
+    limit: z.number().min(1).max(100).optional().describe('Max results (default 50)'),
+  },
+  (args) => ({
+    author: args.author,
+    publication: args.publication,
+    keyword: args.keyword,
+    since_hours: args.since_hours || 168,
+    limit: args.limit || 50,
+  }),
+  SUBSTACK_RESULTS_DIR,
+);
+
+registerIpcTool('substack_feed_publications',
+  'List Substack publications/authors that have appeared in your inbox. Search by partial name. Shows post count per publication.',
+  {
+    search: z.string().optional().describe('Search by partial publication or author name'),
+    since_hours: z.number().optional().describe('Only include publications from the last N hours'),
+  },
+  (args) => ({
+    search: args.search,
+    since_hours: args.since_hours,
+  }),
+  SUBSTACK_RESULTS_DIR,
+);
+
 // Start the stdio transport
 const transport = new StdioServerTransport();
 await server.connect(transport);

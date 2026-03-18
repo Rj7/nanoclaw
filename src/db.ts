@@ -118,6 +118,20 @@ function createSchema(database: Database.Database): void {
     );
     CREATE INDEX IF NOT EXISTS idx_x_feed_tweets_collected ON x_feed_tweets(collected_at);
     CREATE INDEX IF NOT EXISTS idx_x_feed_tweets_handle ON x_feed_tweets(handle);
+    CREATE TABLE IF NOT EXISTS substack_feed_posts (
+      post_url TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      author TEXT NOT NULL,
+      publication TEXT NOT NULL,
+      snippet TEXT,
+      content TEXT,
+      images TEXT,
+      word_count INTEGER DEFAULT 0,
+      post_date TEXT,
+      collected_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_substack_feed_collected ON substack_feed_posts(collected_at);
+    CREATE INDEX IF NOT EXISTS idx_substack_feed_publication ON substack_feed_posts(publication);
   `);
 
   // Add context_mode column if it doesn't exist (migration for existing DBs)
@@ -171,6 +185,21 @@ function createSchema(database: Database.Database): void {
     );
     database.exec(
       `UPDATE chats SET channel = 'telegram', is_group = 1 WHERE jid LIKE 'tg:%'`,
+    );
+  } catch {
+    /* columns already exist */
+  }
+
+  // Add content/images/word_count columns to substack_feed_posts (migration)
+  try {
+    database.exec(
+      `ALTER TABLE substack_feed_posts ADD COLUMN content TEXT`,
+    );
+    database.exec(
+      `ALTER TABLE substack_feed_posts ADD COLUMN images TEXT`,
+    );
+    database.exec(
+      `ALTER TABLE substack_feed_posts ADD COLUMN word_count INTEGER DEFAULT 0`,
     );
   } catch {
     /* columns already exist */
@@ -777,6 +806,151 @@ export function pruneXFeedTweets(olderThanDays: number): number {
   const cutoff = new Date(Date.now() - olderThanDays * 86400000).toISOString();
   return db
     .prepare('DELETE FROM x_feed_tweets WHERE collected_at < ?')
+    .run(cutoff).changes;
+}
+
+// --- Substack feed posts ---
+
+export interface SubstackFeedPostRow {
+  post_url: string;
+  title: string;
+  author: string;
+  publication: string;
+  snippet: string | null;
+  content: string | null;
+  images: string | null;
+  word_count: number;
+  post_date: string | null;
+  collected_at: string;
+}
+
+export function saveSubstackFeedPostsBatch(
+  posts: SubstackFeedPostRow[],
+): number {
+  if (posts.length === 0) return 0;
+  const stmt = db.prepare(
+    `INSERT OR IGNORE INTO substack_feed_posts (post_url, title, author, publication, snippet, content, images, word_count, post_date, collected_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  );
+  let inserted = 0;
+  const insertAll = db.transaction(() => {
+    for (const p of posts) {
+      const result = stmt.run(
+        p.post_url,
+        p.title,
+        p.author,
+        p.publication,
+        p.snippet,
+        p.content,
+        p.images,
+        p.word_count,
+        p.post_date,
+        p.collected_at,
+      );
+      inserted += result.changes;
+    }
+  });
+  insertAll();
+  return inserted;
+}
+
+export function getStoredPostUrls(urls: string[]): Set<string> {
+  if (urls.length === 0) return new Set();
+  const placeholders = urls.map(() => '?').join(',');
+  const rows = db
+    .prepare(
+      `SELECT post_url FROM substack_feed_posts WHERE post_url IN (${placeholders})`,
+    )
+    .all(...urls) as { post_url: string }[];
+  return new Set(rows.map((r) => r.post_url));
+}
+
+export function searchSubstackFeedPosts(opts: {
+  author?: string;
+  publication?: string;
+  keyword?: string;
+  sinceHours?: number;
+  limit?: number;
+}): SubstackFeedPostRow[] {
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+
+  if (opts.author) {
+    conditions.push('LOWER(author) LIKE LOWER(?)');
+    params.push(`%${opts.author}%`);
+  }
+  if (opts.publication) {
+    conditions.push('LOWER(publication) LIKE LOWER(?)');
+    params.push(`%${opts.publication}%`);
+  }
+  if (opts.keyword) {
+    conditions.push('(LOWER(title) LIKE LOWER(?) OR LOWER(snippet) LIKE LOWER(?))');
+    params.push(`%${opts.keyword}%`, `%${opts.keyword}%`);
+  }
+  if (opts.sinceHours) {
+    const since = new Date(
+      Date.now() - opts.sinceHours * 3600000,
+    ).toISOString();
+    conditions.push('collected_at >= ?');
+    params.push(since);
+  }
+
+  const where =
+    conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  const limit = opts.limit || 50;
+  params.push(limit);
+
+  return db
+    .prepare(
+      `SELECT * FROM substack_feed_posts ${where} ORDER BY collected_at DESC LIMIT ?`,
+    )
+    .all(...params) as SubstackFeedPostRow[];
+}
+
+export function getSubstackFeedPublications(opts?: {
+  sinceHours?: number;
+  search?: string;
+}): { publication: string; author: string; post_count: number }[] {
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+
+  if (opts?.sinceHours) {
+    const since = new Date(
+      Date.now() - opts.sinceHours * 3600000,
+    ).toISOString();
+    conditions.push('collected_at >= ?');
+    params.push(since);
+  }
+  if (opts?.search) {
+    conditions.push(
+      '(LOWER(publication) LIKE LOWER(?) OR LOWER(author) LIKE LOWER(?))',
+    );
+    params.push(`%${opts.search}%`, `%${opts.search}%`);
+  }
+
+  const where =
+    conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  return db
+    .prepare(
+      `SELECT publication, author, COUNT(*) as post_count
+       FROM substack_feed_posts ${where}
+       GROUP BY publication
+       ORDER BY post_count DESC`,
+    )
+    .all(...params) as {
+    publication: string;
+    author: string;
+    post_count: number;
+  }[];
+}
+
+export function pruneSubstackFeedPosts(olderThanDays: number): number {
+  const cutoff = new Date(
+    Date.now() - olderThanDays * 86400000,
+  ).toISOString();
+  return db
+    .prepare('DELETE FROM substack_feed_posts WHERE collected_at < ?')
     .run(cutoff).changes;
 }
 

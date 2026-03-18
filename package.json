@@ -17,6 +17,8 @@
     "auth": "tsx src/whatsapp-auth.ts",
     "x-feed-monitor": "node dist/x-feed-monitor.js",
     "x-feed-setup": "npx tsx src/x-feed-setup.ts",
+    "substack-feed-monitor": "node dist/substack-feed-monitor.js",
+    "substack-feed-setup": "npx tsx src/substack-feed-setup.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },

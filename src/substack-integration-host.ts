@@ -5,6 +5,10 @@
  * Uses Playwright on the host with a persistent browser profile.
  */
 
+import {
+  searchSubstackFeedPosts,
+  getSubstackFeedPublications,
+} from './db.js';
 import { logger } from './logger.js';
 import {
   runSkillScript,
@@ -58,6 +62,44 @@ export async function handleSubstackIpc(
       }
       result = await runScript('read', { url: data.url });
       break;
+
+    case 'substack_feed_query': {
+      const posts = searchSubstackFeedPosts({
+        author: data.author as string | undefined,
+        publication: data.publication as string | undefined,
+        keyword: data.keyword as string | undefined,
+        sinceHours: (data.since_hours as number) || 168,
+        limit: (data.limit as number) || 50,
+      });
+      if (posts.length > 0) {
+        result = {
+          success: true,
+          message: `Found ${posts.length} posts`,
+          data: { posts },
+        };
+      } else {
+        // Fall back to on-demand inbox if no stored posts match
+        logger.info(
+          { requestId },
+          'No stored posts match, falling back to live inbox',
+        );
+        result = await runScript('inbox', { count: data.limit || 15 });
+      }
+      break;
+    }
+
+    case 'substack_feed_publications': {
+      const pubs = getSubstackFeedPublications({
+        sinceHours: (data.since_hours as number) || undefined,
+        search: data.search as string | undefined,
+      });
+      result = {
+        success: true,
+        message: `Found ${pubs.length} publications`,
+        data: { publications: pubs },
+      };
+      break;
+    }
 
     default:
       return false;
