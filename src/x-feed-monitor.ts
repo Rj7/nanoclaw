@@ -192,7 +192,10 @@ async function pollCycle(): Promise<void> {
         const paths = await downloadTweetImages(tweet.imageUrls, tweet.url);
         if (paths.length > 0) images = JSON.stringify(paths);
       } catch (err) {
-        logger.debug({ err, url: tweet.url }, 'Failed to download tweet images');
+        logger.debug(
+          { err, url: tweet.url },
+          'Failed to download tweet images',
+        );
       }
     }
 
