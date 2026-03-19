@@ -7,7 +7,9 @@
  * Usage: node dist/x-feed-monitor.js
  */
 
+import { createWriteStream } from 'fs';
 import fs from 'fs';
+import { request as httpsRequest } from 'https';
 import path from 'path';
 
 import { DATA_DIR } from './config.js';
@@ -28,6 +30,7 @@ import {
 } from './db.js';
 
 const PID_FILE = path.join(DATA_DIR, 'x-feed-monitor.pid');
+const IMAGES_DIR = path.join(DATA_DIR, 'x-images');
 const TICKER_RE = /\$[A-Z]{1,5}\b/g;
 
 let running = true;
@@ -38,6 +41,74 @@ function extractTickers(text: string): string | null {
   const matches = text.match(TICKER_RE);
   if (!matches || matches.length === 0) return null;
   return [...new Set(matches)].join(',');
+}
+
+function slugFromTweetUrl(url: string): string {
+  // Extract "handle/status/id" → "handle-id"
+  const match = url.match(/x\.com\/([^/]+)\/status\/(\d+)/);
+  return match ? `${match[1]}-${match[2]}` : 'unknown';
+}
+
+async function downloadImage(
+  imageUrl: string,
+  dir: string,
+  index: number,
+): Promise<string | null> {
+  return new Promise((resolve) => {
+    try {
+      const ext = imageUrl.match(/\.(jpg|jpeg|png|gif|webp)/i)?.[1] || 'jpg';
+      const filename = `img-${index}.${ext}`;
+      const filePath = path.join(dir, filename);
+
+      if (fs.existsSync(filePath)) {
+        resolve(filePath);
+        return;
+      }
+
+      const req = httpsRequest(imageUrl, { timeout: 15000 }, (res) => {
+        if (res.statusCode === 301 || res.statusCode === 302) {
+          const location = res.headers.location;
+          if (location) {
+            downloadImage(location, dir, index).then(resolve);
+            return;
+          }
+        }
+        if (res.statusCode !== 200) {
+          resolve(null);
+          return;
+        }
+        const stream = createWriteStream(filePath);
+        res.pipe(stream);
+        stream.on('finish', () => resolve(filePath));
+        stream.on('error', () => resolve(null));
+      });
+      req.on('error', () => resolve(null));
+      req.on('timeout', () => {
+        req.destroy();
+        resolve(null);
+      });
+      req.end();
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+async function downloadTweetImages(
+  imageUrls: string[],
+  tweetUrl: string,
+): Promise<string[]> {
+  if (imageUrls.length === 0) return [];
+  const slug = slugFromTweetUrl(tweetUrl);
+  const dir = path.join(IMAGES_DIR, slug);
+  fs.mkdirSync(dir, { recursive: true });
+
+  const paths: string[] = [];
+  for (let i = 0; i < Math.min(imageUrls.length, 4); i++) {
+    const result = await downloadImage(imageUrls[i], dir, i);
+    if (result) paths.push(result);
+  }
+  return paths;
 }
 
 async function pollCycle(): Promise<void> {
@@ -109,11 +180,22 @@ async function pollCycle(): Promise<void> {
   const tweetUrls = tweets.filter((t) => t.url).map((t) => t.url);
   const storedUrls = getStoredTweetUrls(tweetUrls);
 
-  // Build rows for new tweets only
+  // Build rows for new tweets only, downloading images
   const now = new Date().toISOString();
   const newTweets: XFeedTweetRow[] = [];
   for (const tweet of tweets) {
     if (!tweet.url || !tweet.text || storedUrls.has(tweet.url)) continue;
+
+    let images: string | null = null;
+    if (tweet.imageUrls && tweet.imageUrls.length > 0) {
+      try {
+        const paths = await downloadTweetImages(tweet.imageUrls, tweet.url);
+        if (paths.length > 0) images = JSON.stringify(paths);
+      } catch (err) {
+        logger.debug({ err, url: tweet.url }, 'Failed to download tweet images');
+      }
+    }
+
     newTweets.push({
       tweet_url: tweet.url,
       author: tweet.author,
@@ -125,6 +207,7 @@ async function pollCycle(): Promise<void> {
       retweets: tweet.retweets,
       replies: tweet.replies,
       collected_at: now,
+      images,
     });
   }
 

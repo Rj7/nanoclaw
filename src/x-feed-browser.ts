@@ -69,11 +69,18 @@ export const EXTRACT_TWEETS_JS = `(function() {
       var m = label.match(/([0-9][0-9,]*)/);
       return m ? parseInt(m[1].replace(/,/g, ''), 10) : 0;
     }
+    var imageUrls = [];
+    var imgEls = article.querySelectorAll('img[src*="pbs.twimg.com/media"]');
+    for (var j = 0; j < imgEls.length; j++) {
+      var src = imgEls[j].getAttribute('src') || '';
+      if (src) imageUrls.push(src);
+    }
     results.push({
       author: displayName, handle: handle, text: tweetText,
       quotedText: quotedText,
       url: tweetLink ? 'https://x.com' + tweetLink : '',
-      time: time, likes: getMetric('like'), retweets: getMetric('retweet'), replies: getMetric('reply')
+      time: time, likes: getMetric('like'), retweets: getMetric('retweet'), replies: getMetric('reply'),
+      imageUrls: imageUrls
     });
   }
   return results;
@@ -89,6 +96,7 @@ export interface TweetData {
   likes: number;
   retweets: number;
   replies: number;
+  imageUrls: string[];
 }
 
 let context: BrowserContext | null = null;
