@@ -11,11 +11,7 @@ import {
   X_FEED_STALE_THRESHOLD_MS,
   SUBSTACK_FEED_STALE_THRESHOLD_MS,
 } from './config.js';
-import {
-  getLatestCollectedAt,
-  getRouterState,
-  setRouterState,
-} from './db.js';
+import { getLatestCollectedAt, getRouterState, setRouterState } from './db.js';
 import { logger } from './logger.js';
 
 export interface FeedHealthDeps {
@@ -55,7 +51,10 @@ async function checkFeed(opts: FeedCheckOpts): Promise<void> {
         'Feed health alert sent',
       );
     } catch (err) {
-      logger.error({ err, feed: opts.name }, 'Failed to send feed health alert');
+      logger.error(
+        { err, feed: opts.name },
+        'Failed to send feed health alert',
+      );
     }
   } else if (!isStale && alreadyAlerted) {
     setRouterState(opts.alertKey, '');

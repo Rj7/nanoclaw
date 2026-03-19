@@ -221,7 +221,7 @@ function buildVolumeMounts(
 
   // Mount finviz-mcp-server source (read-only) for stock research tools
   const finvizDir = path.join(os.homedir(), 'git', 'finviz-mcp-server');
-  if (isMain && fs.existsSync(finvizDir)) {
+  if (fs.existsSync(finvizDir)) {
     mounts.push({
       hostPath: finvizDir,
       containerPath: '/opt/finviz-mcp-server',
@@ -284,18 +284,19 @@ function buildContainerArgs(
     if (value) args.push('-e', `${key}=${value}`);
   }
 
-  // Pass IBKR keys only to containers that have the portfolio mount
+  // Pass portfolio-specific keys only to containers with the portfolio mount
   const hasPortfolioMount = mounts.some((m) =>
     m.containerPath.includes('portfolio'),
   );
   if (hasPortfolioMount) {
-    const ibkrKeys = readEnvFile([
+    const portfolioKeys = readEnvFile([
       'IBKR_FLEX_QUERY_TOKEN',
       'IBKR_FLEX_QUERY_ID',
       'IBKR_ACCOUNT_ID',
       'TRADING_JOURNAL_DATABASE_URL',
+      'POLYGON_API_KEY',
     ]);
-    for (const [key, value] of Object.entries(ibkrKeys)) {
+    for (const [key, value] of Object.entries(portfolioKeys)) {
       if (value) args.push('-e', `${key}=${value}`);
     }
   }

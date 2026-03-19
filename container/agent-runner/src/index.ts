@@ -483,7 +483,7 @@ async function runQuery(
             },
           },
         } : {}),
-        ...(containerInput.isMain && process.env.FINVIZ_API_KEY ? {
+        ...(process.env.FINVIZ_API_KEY ? {
           finviz: {
             command: 'python3',
             args: ['-c', 'import sys; sys.path.insert(0, "/opt/finviz-mcp-server"); from src.server import cli_main; cli_main()'],

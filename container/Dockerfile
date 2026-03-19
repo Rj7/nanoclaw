@@ -43,7 +43,7 @@ RUN npm install -g agent-browser @anthropic-ai/claude-code substack-mcp-plus \
 # and portfolio trading journal (ibflex, sqlalchemy, yfinance)
 RUN pip3 install --break-system-packages \
     "mcp>=1.9.1" requests pandas beautifulsoup4 python-dotenv pydantic aiohttp sec-edgar-api \
-    ibflex sqlalchemy yfinance numpy
+    ibflex sqlalchemy sqlalchemy-libsql yfinance numpy
 
 # Create app directory
 WORKDIR /app
