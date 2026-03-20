@@ -279,20 +279,15 @@ function buildContainerArgs(
   }
 
   // Pass optional service API keys (read from .env, not process.env)
-  const globalKeys = readEnvFile(['FINVIZ_API_KEY']);
-  for (const [key, value] of Object.entries(globalKeys)) {
-    if (value) args.push('-e', `${key}=${value}`);
-  }
-
-  // Pass portfolio keys if configured (tools are baked into the container image)
-  const portfolioKeys = readEnvFile([
+  const envKeys = readEnvFile([
+    'FINVIZ_API_KEY',
     'IBKR_FLEX_QUERY_TOKEN',
     'IBKR_FLEX_QUERY_ID',
     'IBKR_ACCOUNT_ID',
     'TRADING_JOURNAL_DATABASE_URL',
     'POLYGON_API_KEY',
   ]);
-  for (const [key, value] of Object.entries(portfolioKeys)) {
+  for (const [key, value] of Object.entries(envKeys)) {
     if (value) args.push('-e', `${key}=${value}`);
   }
 

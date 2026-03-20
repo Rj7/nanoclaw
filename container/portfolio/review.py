@@ -7,7 +7,6 @@ Usage:
     python3 /opt/portfolio/tools/review.py
 """
 import sys
-import os
 from datetime import datetime
 
 sys.path.insert(0, '/opt/portfolio')

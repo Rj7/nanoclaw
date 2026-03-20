@@ -13,6 +13,11 @@ CONTAINER_RUNTIME="${CONTAINER_RUNTIME:-docker}"
 # Stage portfolio source if available (external repo, not checked into nanoclaw)
 PORTFOLIO_SRC="${PORTFOLIO_REPO:-$HOME/git/portfolio/trading_journal}"
 STAGING_DIR="$SCRIPT_DIR/_portfolio-src"
+
+# Ensure staging dir is cleaned up even on failure
+cleanup() { rm -rf "$STAGING_DIR"; }
+trap cleanup EXIT
+
 rm -rf "$STAGING_DIR"
 
 if [ -d "$PORTFOLIO_SRC/src" ]; then
@@ -41,9 +46,6 @@ echo "Building NanoClaw agent container image..."
 echo "Image: ${IMAGE_NAME}:${TAG}"
 
 ${CONTAINER_RUNTIME} build -t "${IMAGE_NAME}:${TAG}" .
-
-# Clean up staging directory
-rm -rf "$STAGING_DIR"
 
 echo ""
 echo "Build complete!"

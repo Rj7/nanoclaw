@@ -7,7 +7,6 @@ Usage:
     python3 /opt/portfolio/tools/analyze.py
 """
 import sys
-import os
 import json
 from collections import defaultdict
 from datetime import datetime
