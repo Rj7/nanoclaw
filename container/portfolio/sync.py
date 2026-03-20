@@ -9,10 +9,13 @@ cached response. This avoids 3 separate round trips to IBKR (each taking
 Usage:
     python3 /opt/portfolio/tools/sync.py
     python3 /opt/portfolio/tools/sync.py --nav-only
+    python3 /opt/portfolio/tools/sync.py --force   # ignore daily cache
 """
 import sys
 import os
 import argparse
+from datetime import date
+from pathlib import Path
 
 sys.path.insert(0, '/opt/portfolio')
 
@@ -27,11 +30,22 @@ def main():
     parser.add_argument('--query-id', default=os.environ.get('IBKR_FLEX_QUERY_ID'),
                         help="IBKR Flex Query ID (default: $IBKR_FLEX_QUERY_ID)")
     parser.add_argument('--nav-only', action='store_true', help="Only sync NAV data")
+    parser.add_argument('--force', action='store_true',
+                        help="Force download even if already synced today")
     args = parser.parse_args()
 
     if not args.token or not args.query_id:
         print("ERROR: --token and --query-id required (or set IBKR_FLEX_QUERY_TOKEN / IBKR_FLEX_QUERY_ID)")
         sys.exit(1)
+
+    # IBKR Activity Flex Queries update once daily (available ~5 AM ET).
+    # Skip the download if we already synced today unless --force is set.
+    stamp_file = Path('/workspace/group/.last-ibkr-sync')
+    if not args.force and stamp_file.exists():
+        last_sync = stamp_file.read_text().strip()
+        if last_sync == str(date.today()):
+            print(f"Already synced today ({last_sync}). Use --force to re-download.")
+            sys.exit(0)
 
     try:
         from ibflex import client as ib_client, parser as ib_parser
@@ -112,6 +126,7 @@ def main():
         print("Some components had errors (see above)")
         sys.exit(1)
     else:
+        stamp_file.write_text(str(date.today()))
         print("All components synced successfully")
 
 
