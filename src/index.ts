@@ -250,14 +250,18 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   let hadError = false;
   let outputSentToUser = false;
 
-  // Heartbeat: send periodic "still working" messages so the user knows we're alive
-  const HEARTBEAT_INTERVAL_MS = 90_000; // 90 seconds
+  // Heartbeat: send periodic "still working" messages so the user knows we're alive.
+  // Uses a timestamp so heartbeats only fire when the user hasn't seen any output
+  // (real or heartbeat) for a full interval.
+  const HEARTBEAT_INTERVAL_MS = 5 * 60_000; // 5 minutes
+  let lastVisibleOutputAt = 0; // nothing sent yet — first tick will fire
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   heartbeatTimer = setInterval(async () => {
-    if (!outputSentToUser) {
+    if (Date.now() - lastVisibleOutputAt >= HEARTBEAT_INTERVAL_MS) {
       await channel
         .sendMessage(chatJid, '⏳ Still working on it...')
         .catch(() => {});
+      lastVisibleOutputAt = Date.now();
     }
   }, HEARTBEAT_INTERVAL_MS);
 
@@ -282,15 +286,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
         if (text) {
           await channel.sendMessage(chatJid, text);
           outputSentToUser = true;
-          // Reset heartbeat so we don't send "still working" right after real output
-          if (heartbeatTimer) {
-            clearInterval(heartbeatTimer);
-            heartbeatTimer = setInterval(async () => {
-              await channel
-                .sendMessage(chatJid, '⏳ Still working on it...')
-                .catch(() => {});
-            }, HEARTBEAT_INTERVAL_MS);
-          }
+          lastVisibleOutputAt = Date.now();
         }
         // Only reset idle timer on actual results, not session-update markers (result: null)
         resetIdleTimer();
