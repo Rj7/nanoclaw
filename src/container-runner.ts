@@ -284,7 +284,6 @@ function buildContainerArgs(
     'IBKR_FLEX_QUERY_TOKEN',
     'IBKR_FLEX_QUERY_ID',
     'IBKR_ACCOUNT_ID',
-    'TRADING_JOURNAL_DATABASE_URL',
     'POLYGON_API_KEY',
   ]);
   for (const [key, value] of Object.entries(envKeys)) {

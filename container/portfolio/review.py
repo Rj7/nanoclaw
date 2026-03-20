@@ -17,8 +17,11 @@ BIG_WIN_THRESHOLD = 500
 BIG_LOSS_THRESHOLD = -300
 
 
+DB_PATH = '/workspace/group/portfolio.db'
+
+
 def main():
-    session = init_db()
+    session = init_db(DB_PATH)
     trades = session.query(Trade).all()
 
     if not trades:

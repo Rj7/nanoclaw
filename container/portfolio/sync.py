@@ -53,7 +53,8 @@ def main():
         print("ERROR: ibflex library not installed")
         sys.exit(1)
 
-    session = init_db()
+    db_path = '/workspace/group/portfolio.db'
+    session = init_db(db_path)
     client = FlexQueryClient(session, token=args.token, query_id=args.query_id)
 
     # Download the Flex Query report ONCE

@@ -21,8 +21,11 @@ from src.analytics.performance import PerformanceAnalytics
 OUTPUT_JSON = Path('/workspace/group/performance.json')
 
 
+DB_PATH = '/workspace/group/portfolio.db'
+
+
 def main():
-    session = init_db()
+    session = init_db(DB_PATH)
     trades = session.query(Trade).all()
 
     if not trades:
