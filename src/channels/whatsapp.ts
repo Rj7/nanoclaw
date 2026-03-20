@@ -31,6 +31,8 @@ import {
 import { registerChannel, ChannelOpts } from './registry.js';
 
 const GROUP_SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
+const CONNECTION_WATCHDOG_INTERVAL_MS = 5 * 60 * 1000; // check every 5 minutes
+const CONNECTION_STALE_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes with no events = stale
 
 export interface WhatsAppChannelOpts {
   onMessage: OnInboundMessage;
@@ -47,6 +49,8 @@ export class WhatsAppChannel implements Channel {
   private outgoingQueue: Array<{ jid: string; text: string }> = [];
   private flushing = false;
   private groupSyncTimerStarted = false;
+  private watchdogStarted = false;
+  private lastEventAt = Date.now();
 
   private opts: WhatsAppChannelOpts;
 
@@ -91,6 +95,7 @@ export class WhatsAppChannel implements Channel {
     });
 
     this.sock.ev.on('connection.update', (update) => {
+      this.lastEventAt = Date.now();
       const { connection, lastDisconnect, qr } = update;
 
       if (qr) {
@@ -162,6 +167,12 @@ export class WhatsAppChannel implements Channel {
           }, GROUP_SYNC_INTERVAL_MS);
         }
 
+        // Start connection watchdog (once)
+        if (!this.watchdogStarted) {
+          this.watchdogStarted = true;
+          this.startConnectionWatchdog();
+        }
+
         // Signal first connection to caller
         if (onFirstOpen) {
           onFirstOpen();
@@ -173,6 +184,7 @@ export class WhatsAppChannel implements Channel {
     this.sock.ev.on('creds.update', saveCreds);
 
     this.sock.ev.on('messages.upsert', async ({ messages }) => {
+      this.lastEventAt = Date.now();
       for (const msg of messages) {
         try {
           if (!msg.message) continue;
@@ -356,6 +368,23 @@ export class WhatsAppChannel implements Channel {
     } catch (err) {
       logger.error({ err }, 'Failed to sync group metadata');
     }
+  }
+
+  private startConnectionWatchdog(): void {
+    setInterval(() => {
+      if (!this.connected) return; // already disconnected, reconnect logic handles it
+      const silenceMs = Date.now() - this.lastEventAt;
+      if (silenceMs > CONNECTION_STALE_THRESHOLD_MS) {
+        const mins = Math.round(silenceMs / 60_000);
+        logger.warn(
+          { silenceMinutes: mins },
+          'Connection watchdog: no events received, forcing reconnect',
+        );
+        this.connected = false;
+        this.sock?.end(new Error('watchdog: stale connection'));
+        this.scheduleReconnect(1);
+      }
+    }, CONNECTION_WATCHDOG_INTERVAL_MS);
   }
 
   private scheduleReconnect(attempt: number): void {
