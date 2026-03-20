@@ -284,21 +284,16 @@ function buildContainerArgs(
     if (value) args.push('-e', `${key}=${value}`);
   }
 
-  // Pass portfolio-specific keys only to containers with the portfolio mount
-  const hasPortfolioMount = mounts.some((m) =>
-    m.containerPath.includes('portfolio'),
-  );
-  if (hasPortfolioMount) {
-    const portfolioKeys = readEnvFile([
-      'IBKR_FLEX_QUERY_TOKEN',
-      'IBKR_FLEX_QUERY_ID',
-      'IBKR_ACCOUNT_ID',
-      'TRADING_JOURNAL_DATABASE_URL',
-      'POLYGON_API_KEY',
-    ]);
-    for (const [key, value] of Object.entries(portfolioKeys)) {
-      if (value) args.push('-e', `${key}=${value}`);
-    }
+  // Pass portfolio keys if configured (tools are baked into the container image)
+  const portfolioKeys = readEnvFile([
+    'IBKR_FLEX_QUERY_TOKEN',
+    'IBKR_FLEX_QUERY_ID',
+    'IBKR_ACCOUNT_ID',
+    'TRADING_JOURNAL_DATABASE_URL',
+    'POLYGON_API_KEY',
+  ]);
+  for (const [key, value] of Object.entries(portfolioKeys)) {
+    if (value) args.push('-e', `${key}=${value}`);
   }
 
   // Runtime-specific args for host gateway resolution

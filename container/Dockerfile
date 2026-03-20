@@ -40,10 +40,17 @@ RUN npm install -g agent-browser @anthropic-ai/claude-code substack-mcp-plus \
     && apt-get purge -y build-essential && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
 
 # Install Python deps for finviz-mcp-server (source mounted at runtime)
-# and portfolio trading journal (ibflex, sqlalchemy, yfinance)
 RUN pip3 install --break-system-packages \
-    "mcp>=1.9.1" requests pandas beautifulsoup4 python-dotenv pydantic aiohttp sec-edgar-api \
-    ibflex sqlalchemy sqlalchemy-libsql yfinance numpy
+    "mcp>=1.9.1" requests pandas beautifulsoup4 python-dotenv pydantic aiohttp sec-edgar-api
+
+# Copy portfolio source and tools (staged by build.sh from external repo)
+# If _portfolio-src only contains .empty, this is a harmless no-op
+COPY _portfolio-src/ /opt/portfolio/
+
+# Install portfolio-specific Python requirements if present
+RUN if [ -f /opt/portfolio/tools/requirements.txt ]; then \
+      pip3 install --break-system-packages -r /opt/portfolio/tools/requirements.txt; \
+    fi
 
 # Create app directory
 WORKDIR /app

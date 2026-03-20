@@ -25,6 +25,9 @@ groups/global/*
 # Temp files
 .tmp-*
 
+# Portfolio build staging (staged by container/build.sh from external repo)
+container/_portfolio-src/
+
 # OS
 .DS_Store
 
