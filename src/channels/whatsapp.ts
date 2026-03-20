@@ -33,6 +33,8 @@ import { registerChannel, ChannelOpts } from './registry.js';
 const GROUP_SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const CONNECTION_WATCHDOG_INTERVAL_MS = 5 * 60 * 1000; // check every 5 minutes
 const CONNECTION_STALE_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes with no events = stale
+const MAX_RECONNECT_ATTEMPTS = 20;
+const STABLE_CONNECTION_THRESHOLD_MS = 60_000; // 60s of uptime = "stable"
 
 export interface WhatsAppChannelOpts {
   onMessage: OnInboundMessage;
@@ -49,11 +51,11 @@ export class WhatsAppChannel implements Channel {
   private outgoingQueue: Array<{ jid: string; text: string }> = [];
   private flushing = false;
   private groupSyncTimerStarted = false;
-  private watchdogStarted = false;
+  private watchdogTimer: ReturnType<typeof setInterval> | null = null;
   private lastEventAt = Date.now();
   private reconnectAttempt = 0;
-  private lastStableConnection = 0; // timestamp of last connection that stayed open > 60s
-  private reconnecting = false;
+  private lastStableConnection = 0;
+  private pendingReconnect: ReturnType<typeof setTimeout> | null = null;
 
   private opts: WhatsAppChannelOpts;
 
@@ -119,10 +121,11 @@ export class WhatsAppChannel implements Channel {
         const shouldReconnect = reason !== DisconnectReason.loggedOut;
 
         // Track consecutive failures: only reset counter if last connection
-        // stayed open for > 60s (was genuinely stable)
+        // stayed open long enough to be considered stable
         const wasStable =
           this.lastStableConnection > 0 &&
-          Date.now() - this.lastStableConnection > 60_000;
+          Date.now() - this.lastStableConnection >
+            STABLE_CONNECTION_THRESHOLD_MS;
         if (wasStable) {
           this.reconnectAttempt = 0;
         }
@@ -141,14 +144,8 @@ export class WhatsAppChannel implements Channel {
         if (!shouldReconnect) {
           logger.info('Logged out. Run /setup to re-authenticate.');
           process.exit(0);
-        } else if (this.reconnectAttempt > 20) {
-          logger.fatal(
-            { attempts: this.reconnectAttempt },
-            'Too many reconnect failures, exiting for systemd restart',
-          );
-          process.exit(1);
         } else {
-          this.scheduleReconnect(this.reconnectAttempt);
+          this.reconnectOrExit();
         }
       } else if (connection === 'open') {
         this.connected = true;
@@ -189,11 +186,8 @@ export class WhatsAppChannel implements Channel {
           }, GROUP_SYNC_INTERVAL_MS);
         }
 
-        // Start connection watchdog (once)
-        if (!this.watchdogStarted) {
-          this.watchdogStarted = true;
-          this.startConnectionWatchdog();
-        }
+        // Start connection watchdog (restart on each reconnect to avoid stacking)
+        this.startConnectionWatchdog();
 
         // Signal first connection to caller
         if (onFirstOpen) {
@@ -339,6 +333,10 @@ export class WhatsAppChannel implements Channel {
 
   async disconnect(): Promise<void> {
     this.connected = false;
+    if (this.watchdogTimer) clearInterval(this.watchdogTimer);
+    if (this.pendingReconnect) clearTimeout(this.pendingReconnect);
+    this.watchdogTimer = null;
+    this.pendingReconnect = null;
     this.sock?.end(undefined);
   }
 
@@ -393,8 +391,9 @@ export class WhatsAppChannel implements Channel {
   }
 
   private startConnectionWatchdog(): void {
-    setInterval(() => {
-      if (!this.connected) return; // already disconnected, reconnect logic handles it
+    if (this.watchdogTimer) clearInterval(this.watchdogTimer);
+    this.watchdogTimer = setInterval(() => {
+      if (!this.connected) return;
       const silenceMs = Date.now() - this.lastEventAt;
       if (silenceMs > CONNECTION_STALE_THRESHOLD_MS) {
         const mins = Math.round(silenceMs / 60_000);
@@ -404,29 +403,33 @@ export class WhatsAppChannel implements Channel {
         );
         this.connected = false;
         this.sock?.end(new Error('watchdog: stale connection'));
-        this.scheduleReconnect(1);
+        this.reconnectOrExit();
       }
     }, CONNECTION_WATCHDOG_INTERVAL_MS);
   }
 
+  /** Check attempt count and either schedule a reconnect or exit for systemd restart. */
+  private reconnectOrExit(): void {
+    if (this.reconnectAttempt > MAX_RECONNECT_ATTEMPTS) {
+      logger.fatal(
+        { attempts: this.reconnectAttempt },
+        'Too many reconnect failures, exiting for systemd restart',
+      );
+      process.exit(1);
+    }
+    this.scheduleReconnect(this.reconnectAttempt);
+  }
+
   private scheduleReconnect(attempt: number): void {
-    if (this.reconnecting) return; // already a reconnect scheduled
-    this.reconnecting = true;
+    if (this.pendingReconnect) return;
     const delayMs = Math.min(5000 * Math.pow(2, attempt - 1), 300000);
     logger.info({ attempt, delayMs }, 'Reconnecting...');
-    setTimeout(() => {
-      this.reconnecting = false;
+    this.pendingReconnect = setTimeout(() => {
+      this.pendingReconnect = null;
       this.connectInternal().catch((err) => {
         logger.error({ err, attempt }, 'Reconnection attempt failed');
         this.reconnectAttempt++;
-        if (this.reconnectAttempt > 20) {
-          logger.fatal(
-            { attempts: this.reconnectAttempt },
-            'Too many reconnect failures, exiting for systemd restart',
-          );
-          process.exit(1);
-        }
-        this.scheduleReconnect(this.reconnectAttempt);
+        this.reconnectOrExit();
       });
     }, delayMs);
   }

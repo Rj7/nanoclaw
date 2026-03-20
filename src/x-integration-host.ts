@@ -13,6 +13,9 @@ import {
 } from './skill-runner.js';
 import { searchXFeedTweets, getXFeedAuthors } from './db.js';
 
+/** X tool types that only read from the local DB — safe for non-main groups. */
+const X_READ_ONLY_TYPES = new Set(['x_feed_query', 'x_feed_authors']);
+
 function runScript(script: string, args: object): Promise<SkillResult> {
   return runSkillScript('x-integration', script, args);
 }
@@ -37,8 +40,7 @@ export async function handleXIpc(
 
   // Read-only feed queries are allowed for all groups; writes and live
   // browser actions are restricted to the main group.
-  const READ_ONLY_TYPES = new Set(['x_feed_query', 'x_feed_authors']);
-  if (!isMain && !READ_ONLY_TYPES.has(type)) {
+  if (!isMain && !X_READ_ONLY_TYPES.has(type)) {
     logger.warn({ sourceGroup, type }, 'X integration blocked: not main group');
     return true;
   }
