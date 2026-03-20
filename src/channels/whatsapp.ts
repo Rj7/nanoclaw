@@ -51,6 +51,9 @@ export class WhatsAppChannel implements Channel {
   private groupSyncTimerStarted = false;
   private watchdogStarted = false;
   private lastEventAt = Date.now();
+  private reconnectAttempt = 0;
+  private lastStableConnection = 0; // timestamp of last connection that stayed open > 60s
+  private reconnecting = false;
 
   private opts: WhatsAppChannelOpts;
 
@@ -114,23 +117,42 @@ export class WhatsAppChannel implements Channel {
           lastDisconnect?.error as { output?: { statusCode?: number } }
         )?.output?.statusCode;
         const shouldReconnect = reason !== DisconnectReason.loggedOut;
+
+        // Track consecutive failures: only reset counter if last connection
+        // stayed open for > 60s (was genuinely stable)
+        const wasStable =
+          this.lastStableConnection > 0 &&
+          Date.now() - this.lastStableConnection > 60_000;
+        if (wasStable) {
+          this.reconnectAttempt = 0;
+        }
+        this.reconnectAttempt++;
+
         logger.info(
           {
             reason,
             shouldReconnect,
+            attempt: this.reconnectAttempt,
             queuedMessages: this.outgoingQueue.length,
           },
           'Connection closed',
         );
 
-        if (shouldReconnect) {
-          this.scheduleReconnect(1);
-        } else {
+        if (!shouldReconnect) {
           logger.info('Logged out. Run /setup to re-authenticate.');
           process.exit(0);
+        } else if (this.reconnectAttempt > 20) {
+          logger.fatal(
+            { attempts: this.reconnectAttempt },
+            'Too many reconnect failures, exiting for systemd restart',
+          );
+          process.exit(1);
+        } else {
+          this.scheduleReconnect(this.reconnectAttempt);
         }
       } else if (connection === 'open') {
         this.connected = true;
+        this.lastStableConnection = Date.now();
         logger.info('Connected to WhatsApp');
 
         // Announce availability so WhatsApp relays subsequent presence updates (typing indicators)
@@ -388,12 +410,23 @@ export class WhatsAppChannel implements Channel {
   }
 
   private scheduleReconnect(attempt: number): void {
+    if (this.reconnecting) return; // already a reconnect scheduled
+    this.reconnecting = true;
     const delayMs = Math.min(5000 * Math.pow(2, attempt - 1), 300000);
     logger.info({ attempt, delayMs }, 'Reconnecting...');
     setTimeout(() => {
+      this.reconnecting = false;
       this.connectInternal().catch((err) => {
         logger.error({ err, attempt }, 'Reconnection attempt failed');
-        this.scheduleReconnect(attempt + 1);
+        this.reconnectAttempt++;
+        if (this.reconnectAttempt > 20) {
+          logger.fatal(
+            { attempts: this.reconnectAttempt },
+            'Too many reconnect failures, exiting for systemd restart',
+          );
+          process.exit(1);
+        }
+        this.scheduleReconnect(this.reconnectAttempt);
       });
     }, delayMs);
   }
