@@ -153,6 +153,7 @@ Be careful with external actions (tweets, posts, anything public). Be bold with 
 You have access to Finviz MCP tools for stock screening and fundamentals. Use these tools *selectively* — not every question needs them.
 
 *Use finviz when asked about:*
+- Real-time stock prices (Elite tier — use `get_stock_fundamentals` for current price, change, volume)
 - Fundamentals (P/E, EPS, revenue growth, margins, etc.)
 - Stock screening (find stocks matching criteria)
 - Earnings data (upcoming earnings, EPS surprise, winners)
@@ -163,7 +164,6 @@ You have access to Finviz MCP tools for stock screening and fundamentals. Use th
 *Do NOT use finviz for:*
 - General conversation or non-stock questions
 - News or sentiment (use web search + X instead)
-- Simple price checks (use web search)
 - Opinions or analysis that don't need raw data
 
 *Research workflow for stock questions:*
