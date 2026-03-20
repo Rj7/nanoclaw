@@ -58,6 +58,7 @@ You have Finviz MCP tools for stock data. See the "Stock Research" section below
 - `mcp__finviz__get_sec_filings` — SEC filings for a company
 - `mcp__finviz__get_sector_performance` — sector performance overview
 - `mcp__finviz__get_market_overview` — broad market overview
+- `mcp__finviz__get_options_chain` — real-time options chain (bid/ask, IV, Greeks) by ticker/expiration
 
 ## Communication
 
