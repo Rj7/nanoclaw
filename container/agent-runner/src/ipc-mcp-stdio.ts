@@ -365,9 +365,10 @@ function registerIpcTool(
   schema: Record<string, z.ZodType<any>>,
   buildPayload: (args: any) => Record<string, unknown>,
   resultsDir: string,
+  requireMain = true,
 ): void {
   server.tool(name, description, schema, async (args: any) => {
-    if (!isMain) {
+    if (requireMain && !isMain) {
       return { content: [{ type: 'text' as const, text: 'Only the main group can use this tool.' }], isError: true };
     }
     const requestId = `${name}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -385,8 +386,8 @@ function registerIpcTool(
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function registerXTool(name: string, description: string, schema: Record<string, z.ZodType<any>>, buildPayload: (args: any) => Record<string, unknown>): void {
-  registerIpcTool(name, description, schema, buildPayload, X_RESULTS_DIR);
+function registerXTool(name: string, description: string, schema: Record<string, z.ZodType<any>>, buildPayload: (args: any) => Record<string, unknown>, requireMain = true): void {
+  registerIpcTool(name, description, schema, buildPayload, X_RESULTS_DIR, requireMain);
 }
 
 // --- X Write Tools ---
@@ -446,6 +447,7 @@ registerXTool('x_feed_query',
     since_hours: args.since_hours || 24,
     limit: args.limit || 50,
   }),
+  false,
 );
 
 registerXTool('x_feed_authors',
@@ -458,6 +460,7 @@ registerXTool('x_feed_authors',
     search: args.search,
     since_hours: args.since_hours,
   }),
+  false,
 );
 
 // --- Substack Read Tools ---

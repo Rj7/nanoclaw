@@ -35,8 +35,10 @@ export async function handleXIpc(
     return false;
   }
 
-  // Only main group can use X integration
-  if (!isMain) {
+  // Read-only feed queries are allowed for all groups; writes and live
+  // browser actions are restricted to the main group.
+  const READ_ONLY_TYPES = new Set(['x_feed_query', 'x_feed_authors']);
+  if (!isMain && !READ_ONLY_TYPES.has(type)) {
     logger.warn({ sourceGroup, type }, 'X integration blocked: not main group');
     return true;
   }
