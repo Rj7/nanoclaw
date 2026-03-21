@@ -123,6 +123,18 @@ function buildVolumeMounts(
     }
   }
 
+  // Shared data directory — writable by all groups.
+  // Used for cross-group signals (e.g. Neo publishes portfolio tickers,
+  // Rot writes market signals that Neo reads in morning briefings).
+  const sharedDir = path.join(DATA_DIR, 'shared');
+  if (fs.existsSync(sharedDir)) {
+    mounts.push({
+      hostPath: sharedDir,
+      containerPath: '/workspace/shared',
+      readonly: false,
+    });
+  }
+
   // Per-group Claude sessions directory (isolated from other groups)
   // Each group gets their own .claude/ to prevent cross-group session access
   const groupSessionsDir = path.join(

@@ -78,7 +78,8 @@ export async function handleSubstackIpc(
       if (posts.length > 0) {
         const annotated = posts.map((p) => ({
           ...p,
-          likely_truncated: p.word_count > 0 && p.word_count < TRUNCATED_THRESHOLD,
+          likely_truncated:
+            p.word_count > 0 && p.word_count < TRUNCATED_THRESHOLD,
         }));
         result = {
           success: true,

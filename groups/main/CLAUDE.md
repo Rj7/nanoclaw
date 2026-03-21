@@ -187,6 +187,16 @@ TICKER | Entry reason | Date added | Key levels
 
 ---
 
+## Shared Signals (`/workspace/shared/`)
+
+A shared directory writable by both you and Neo. Used for cross-agent coordination.
+
+*You READ:*
+- `portfolio_tickers.json` — Neo's open positions. Check this during feed scans to know which tickers are held.
+
+*You OWN:*
+- `signals.jsonl` — append when you find material news, sentiment shifts, or price alerts for a held ticker. Neo digests these in the morning briefing alongside other data sources. Only write for held positions, not general watchlist chatter.
+
 ## Admin Context
 
 This is the **main channel**, which has elevated privileges.
