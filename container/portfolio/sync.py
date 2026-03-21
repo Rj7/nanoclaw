@@ -38,22 +38,14 @@ def main():
         print("ERROR: --token and --query-id required (or set IBKR_FLEX_QUERY_TOKEN / IBKR_FLEX_QUERY_ID)")
         sys.exit(1)
 
-    # IBKR Activity Flex Queries update once daily (available ~5 AM ET),
-    # but intraday trades may appear in later downloads.  Allow re-sync
-    # after a cooldown (4 hours) so the PM sync picks up closing trades
-    # that weren't in the AM report.
+    # IBKR Activity Flex Queries update once daily (available ~5 AM ET).
+    # Skip the download if we already synced today unless --force is set.
     stamp_file = Path('/workspace/group/.last-ibkr-sync')
     if not args.force and stamp_file.exists():
-        from datetime import datetime, timezone
-        last_sync = stamp_file.read_text().strip()
-        try:
-            last_sync_time = datetime.fromisoformat(last_sync)
-            hours_since = (datetime.now(timezone.utc) - last_sync_time).total_seconds() / 3600
-            if hours_since < 4:
-                print(f"Synced {hours_since:.1f}h ago ({last_sync}). Use --force to re-download.")
-                sys.exit(0)
-        except ValueError:
-            pass  # old date-only format, proceed with sync
+        last_sync = stamp_file.read_text().strip()[:10]  # handle both date and ISO timestamp
+        if last_sync == str(date.today()):
+            print(f"Already synced today ({last_sync}). Use --force to re-download.")
+            sys.exit(0)
 
     try:
         from ibflex import client as ib_client, parser as ib_parser
@@ -151,8 +143,7 @@ def main():
         print("Some components had errors (see above)")
         sys.exit(1)
     else:
-        from datetime import datetime, timezone
-        stamp_file.write_text(datetime.now(timezone.utc).isoformat())
+        stamp_file.write_text(str(date.today()))
         print("All components synced successfully")
 
 
