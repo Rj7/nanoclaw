@@ -67,6 +67,7 @@ export async function handleSubstackIpc(
       break;
 
     case 'substack_feed_query': {
+      const TRUNCATED_THRESHOLD = 500; // word_count below this is likely a paywalled preview
       const posts = searchSubstackFeedPosts({
         author: data.author as string | undefined,
         publication: data.publication as string | undefined,
@@ -75,10 +76,14 @@ export async function handleSubstackIpc(
         limit: (data.limit as number) || 50,
       });
       if (posts.length > 0) {
+        const annotated = posts.map((p) => ({
+          ...p,
+          likely_truncated: p.word_count > 0 && p.word_count < TRUNCATED_THRESHOLD,
+        }));
         result = {
           success: true,
           message: `Found ${posts.length} posts`,
-          data: { posts },
+          data: { posts: annotated },
         };
       } else {
         // Fall back to on-demand inbox if no stored posts match
