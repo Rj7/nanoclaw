@@ -38,14 +38,22 @@ def main():
         print("ERROR: --token and --query-id required (or set IBKR_FLEX_QUERY_TOKEN / IBKR_FLEX_QUERY_ID)")
         sys.exit(1)
 
-    # IBKR Activity Flex Queries update once daily (available ~5 AM ET).
-    # Skip the download if we already synced today unless --force is set.
+    # IBKR Activity Flex Queries update once daily (available ~5 AM ET),
+    # but intraday trades may appear in later downloads.  Allow re-sync
+    # after a cooldown (4 hours) so the PM sync picks up closing trades
+    # that weren't in the AM report.
     stamp_file = Path('/workspace/group/.last-ibkr-sync')
     if not args.force and stamp_file.exists():
+        from datetime import datetime, timezone
         last_sync = stamp_file.read_text().strip()
-        if last_sync == str(date.today()):
-            print(f"Already synced today ({last_sync}). Use --force to re-download.")
-            sys.exit(0)
+        try:
+            last_sync_time = datetime.fromisoformat(last_sync)
+            hours_since = (datetime.now(timezone.utc) - last_sync_time).total_seconds() / 3600
+            if hours_since < 4:
+                print(f"Synced {hours_since:.1f}h ago ({last_sync}). Use --force to re-download.")
+                sys.exit(0)
+        except ValueError:
+            pass  # old date-only format, proceed with sync
 
     try:
         from ibflex import client as ib_client, parser as ib_parser
@@ -120,6 +128,22 @@ def main():
             print(f"  FAILED: {e}")
             results['positions'] = {'status': 'error', 'message': str(e)}
 
+        # 4. Reconcile expired trades — mark OPEN trades past expiration as EXPIRED
+        print("\nReconciling expired trades...")
+        try:
+            expired_result = _reconcile_expired(session)
+            results['expired'] = expired_result
+            count = expired_result.get('expired_count', 0)
+            if count > 0:
+                print(f"  {count} trade(s) marked EXPIRED")
+                for t in expired_result.get('details', []):
+                    print(f"    {t['symbol']} {t['strike']}{t['option_type'][0]} {t['expiration']}")
+            else:
+                print("  No stale OPEN trades found")
+        except Exception as e:
+            print(f"  FAILED: {e}")
+            results['expired'] = {'status': 'error', 'message': str(e)}
+
     # Summary
     print("\n--- Sync Complete ---")
     has_error = any(r.get('status') == 'error' for r in results.values() if isinstance(r, dict))
@@ -127,7 +151,8 @@ def main():
         print("Some components had errors (see above)")
         sys.exit(1)
     else:
-        stamp_file.write_text(str(date.today()))
+        from datetime import datetime, timezone
+        stamp_file.write_text(datetime.now(timezone.utc).isoformat())
         print("All components synced successfully")
 
 
@@ -289,6 +314,51 @@ def _process_positions(client: FlexQueryClient, stmt) -> dict:
 
     stats['accounts'] = list(stats['accounts'])
     return stats
+
+
+def _reconcile_expired(session) -> dict:
+    """Mark OPEN trades whose expiration has passed as EXPIRED.
+
+    This catches options that expired worthless (IBKR doesn't always
+    generate a closing trade record for these) and options whose closing
+    trade was missed by the sync (e.g. intraday close after the daily
+    report was already cached).
+    """
+    from src.models import Trade
+
+    today = date.today()
+    stale = session.query(Trade).filter(
+        Trade.status == 'OPEN',
+        Trade.expiration < today,
+    ).all()
+
+    details = []
+    for trade in stale:
+        trade.status = 'EXPIRED'
+        trade.exit_date = trade.expiration
+        trade.exit_price = 0
+        trade.proceeds = 0
+        trade.realized_pnl = -(abs(trade.quantity or 0) * (trade.entry_price or 0) * 100)
+        if trade.entry_date:
+            entry = trade.entry_date.date() if hasattr(trade.entry_date, 'date') else trade.entry_date
+            trade.days_held = (trade.expiration - entry).days
+        details.append({
+            'symbol': trade.symbol,
+            'strike': trade.strike,
+            'option_type': trade.option_type,
+            'expiration': str(trade.expiration),
+            'entry_price': trade.entry_price,
+            'quantity': trade.quantity,
+        })
+
+    if stale:
+        session.commit()
+
+    return {
+        'status': 'success',
+        'expired_count': len(stale),
+        'details': details,
+    }
 
 
 if __name__ == '__main__':
