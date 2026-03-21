@@ -17,6 +17,12 @@ function runScript(script: string, args: object): Promise<SkillResult> {
   return runSkillScript('substack-integration', script, args);
 }
 
+/** Substack tools that only read from the local DB — safe for non-main groups. */
+const SUBSTACK_READ_ONLY_TYPES = new Set([
+  'substack_feed_query',
+  'substack_feed_publications',
+]);
+
 export async function handleSubstackIpc(
   data: Record<string, unknown>,
   sourceGroup: string,
@@ -29,7 +35,7 @@ export async function handleSubstackIpc(
     return false;
   }
 
-  if (!isMain) {
+  if (!isMain && !SUBSTACK_READ_ONLY_TYPES.has(type)) {
     logger.warn(
       { sourceGroup, type },
       'Substack integration blocked: not main group',

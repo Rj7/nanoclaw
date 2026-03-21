@@ -496,6 +496,7 @@ registerIpcTool('substack_feed_query',
     limit: args.limit || 50,
   }),
   SUBSTACK_RESULTS_DIR,
+  false, // read-only DB query, safe for all groups
 );
 
 registerIpcTool('substack_feed_publications',
@@ -509,6 +510,7 @@ registerIpcTool('substack_feed_publications',
     since_hours: args.since_hours,
   }),
   SUBSTACK_RESULTS_DIR,
+  false, // read-only DB query, safe for all groups
 );
 
 // Start the stdio transport
