@@ -48,11 +48,12 @@ export function startCredentialProxy(
   const isHttps = upstreamUrl.protocol === 'https:';
   const makeRequest = isHttps ? httpsRequest : httpRequest;
 
-  // Use a custom agent with short idle timeout to prevent stale TLS connections
-  // (BAD_RECORD_MAC errors) while still benefiting from keep-alive pooling.
+  // Disable connection pooling — agent API calls are infrequent and pooled
+  // connections cause stale TLS errors (BAD_RECORD_MAC) when the upstream
+  // load balancer closes idle connections before the pool reuses them.
   const upstreamAgent = isHttps
-    ? new HttpsAgent({ keepAlive: true, keepAliveMsecs: 5000, timeout: 30000 })
-    : new HttpAgent({ keepAlive: true, keepAliveMsecs: 5000, timeout: 30000 });
+    ? new HttpsAgent({ keepAlive: false })
+    : new HttpAgent({ keepAlive: false });
 
   return new Promise((resolve, reject) => {
     const server = createServer((req, res) => {
