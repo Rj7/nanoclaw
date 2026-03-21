@@ -250,20 +250,31 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   let hadError = false;
   let outputSentToUser = false;
 
-  // Heartbeat: send periodic "still working" messages so the user knows we're alive.
-  // Uses a timestamp so heartbeats only fire when the user hasn't seen any output
-  // (real or heartbeat) for a full interval.
+  // Heartbeat: send periodic "still working" messages while agent is actively
+  // processing. Stopped when agent completes (success/error), restarted when
+  // new work arrives via piped messages.
   const HEARTBEAT_INTERVAL_MS = 5 * 60_000; // 5 minutes
   let lastVisibleOutputAt = 0; // nothing sent yet — first tick will fire
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-  heartbeatTimer = setInterval(async () => {
-    if (Date.now() - lastVisibleOutputAt >= HEARTBEAT_INTERVAL_MS) {
-      await channel
-        .sendMessage(chatJid, '⏳ Still working on it...')
-        .catch(() => {});
-      lastVisibleOutputAt = Date.now();
+  const startHeartbeat = () => {
+    if (heartbeatTimer) return; // already running
+    lastVisibleOutputAt = Date.now();
+    heartbeatTimer = setInterval(async () => {
+      if (Date.now() - lastVisibleOutputAt >= HEARTBEAT_INTERVAL_MS) {
+        await channel
+          .sendMessage(chatJid, '⏳ Still working on it...')
+          .catch(() => {});
+        lastVisibleOutputAt = Date.now();
+      }
+    }, HEARTBEAT_INTERVAL_MS);
+  };
+  const stopHeartbeat = () => {
+    if (heartbeatTimer) {
+      clearInterval(heartbeatTimer);
+      heartbeatTimer = null;
     }
-  }, HEARTBEAT_INTERVAL_MS);
+  };
+  startHeartbeat();
 
   const output = await runAgent(
     group,
@@ -273,6 +284,9 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
     async (result) => {
       // Streaming output callback — called for each agent result
       if (result.result) {
+        // Agent is actively working — ensure heartbeat is running
+        startHeartbeat();
+
         const raw =
           typeof result.result === 'string'
             ? result.result
@@ -293,17 +307,20 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
       }
 
       if (result.status === 'success') {
+        // Stop heartbeat — agent is idle waiting for next message, not processing
+        stopHeartbeat();
         queue.notifyIdle(chatJid);
       }
 
       if (result.status === 'error') {
+        stopHeartbeat();
         hadError = true;
       }
     },
   );
 
   await channel.setTyping?.(chatJid, false);
-  if (heartbeatTimer) clearInterval(heartbeatTimer);
+  stopHeartbeat();
   if (idleTimer) clearTimeout(idleTimer);
 
   if (output === 'error' || hadError) {
