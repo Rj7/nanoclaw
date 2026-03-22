@@ -241,9 +241,9 @@ function buildVolumeMounts(
     });
   }
 
-  // Mount Obsidian vault for main group (syncs to user's phone)
-  const vaultDir = path.join(os.homedir(), 'Obsidian', 'Rot');
-  if (isMain && fs.existsSync(vaultDir)) {
+  // Mount Obsidian vault for all agents (syncs to user's phone via Obsidian Sync)
+  const vaultDir = path.join(os.homedir(), 'Obsidian', 'Vault');
+  if (fs.existsSync(vaultDir)) {
     mounts.push({
       hostPath: vaultDir,
       containerPath: '/workspace/vault',
