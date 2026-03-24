@@ -6,8 +6,8 @@ export const config = {
   chromePath: process.env.CHROME_PATH || (process.platform === 'darwin'
     ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
     : '/usr/bin/google-chrome'),
-  browserDataDir: path.join(PROJECT_ROOT, 'data', 'substack-browser-profile'),
-  authPath: path.join(PROJECT_ROOT, 'data', 'substack-browser-auth.json'),
+  browserDataDir: path.join(PROJECT_ROOT, 'data', 'substack-feed-browser-profile'),
+  authPath: path.join(PROJECT_ROOT, 'data', 'substack-feed-auth.json'),
   viewport: { width: 1280, height: 800 },
   timeouts: {
     navigation: 30000,
