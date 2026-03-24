@@ -733,6 +733,16 @@ export function getStoredTweetUrls(urls: string[]): Set<string> {
   return new Set(rows.map((r) => r.tweet_url));
 }
 
+export function updateXFeedTweetText(
+  tweetUrl: string,
+  text: string,
+  tickers: string | null,
+): void {
+  db.prepare(
+    `UPDATE x_feed_tweets SET text = ?, tickers = ? WHERE tweet_url = ?`,
+  ).run(text, tickers, tweetUrl);
+}
+
 export function searchXFeedTweets(opts: {
   ticker?: string;
   author?: string;

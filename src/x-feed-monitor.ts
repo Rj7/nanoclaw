@@ -24,6 +24,7 @@ import {
   initDatabase,
   getStoredTweetUrls,
   saveXFeedTweetsBatch,
+  updateXFeedTweetText,
   pruneXFeedTweets,
   pruneXFeedSeen,
   type XFeedTweetRow,
@@ -223,6 +224,32 @@ async function pollCycle(): Promise<void> {
     );
   } else {
     logger.debug({ total: tweets.length, pollCount }, 'No new tweets');
+  }
+
+  // Expand truncated tweets by opening them in a new tab
+  const truncatedNew = newTweets.filter(
+    (t) => tweets.find((raw) => raw.url === t.tweet_url)?.truncated,
+  );
+  if (truncatedNew.length > 0) {
+    try {
+      const expanded = await browser.expandTruncatedTweets(
+        tweets.filter(
+          (t) => t.truncated && truncatedNew.some((n) => n.tweet_url === t.url),
+        ),
+      );
+      for (const [url, fullText] of expanded) {
+        const tickers = extractTickers(fullText);
+        updateXFeedTweetText(url, fullText, tickers);
+      }
+      if (expanded.size > 0) {
+        logger.info(
+          { expanded: expanded.size },
+          'Expanded truncated tweets',
+        );
+      }
+    } catch (err) {
+      logger.debug({ err }, 'Failed to expand truncated tweets');
+    }
   }
 
   // Prune old data periodically (every 100 polls)

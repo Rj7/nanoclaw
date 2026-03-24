@@ -75,9 +75,11 @@ export const EXTRACT_TWEETS_JS = `(function() {
       var src = imgEls[j].getAttribute('src') || '';
       if (src) imageUrls.push(src);
     }
+    var showMoreEl = article.querySelector('[data-testid="tweet-text-show-more-link"]');
+    var truncated = !!showMoreEl;
     results.push({
       author: displayName, handle: handle, text: tweetText,
-      quotedText: quotedText,
+      quotedText: quotedText, truncated: truncated,
       url: tweetLink ? 'https://x.com' + tweetLink : '',
       time: time, likes: getMetric('like'), retweets: getMetric('retweet'), replies: getMetric('reply'),
       imageUrls: imageUrls
@@ -91,6 +93,7 @@ export interface TweetData {
   handle: string;
   text: string;
   quotedText: string;
+  truncated: boolean;
   url: string;
   time: string;
   likes: number;
@@ -180,6 +183,70 @@ export async function collectTweets(
   }
 
   return allTweets;
+}
+
+// JS to extract full tweet text from an individual tweet page
+const EXTRACT_FULL_TWEET_JS = `(function() {
+  var article = document.querySelector('article[data-testid="tweet"]');
+  if (!article) return null;
+  var tweetTextEls = article.querySelectorAll('[data-testid="tweetText"]');
+  var mainText = tweetTextEls.length > 0 ? tweetTextEls[0].textContent : '';
+  var quotedText = '';
+  if (tweetTextEls.length > 1) {
+    var qt = tweetTextEls[tweetTextEls.length - 1].textContent || '';
+    if (qt && qt !== mainText) quotedText = qt;
+  }
+  return quotedText ? mainText + '\\n[Quoted] ' + quotedText : mainText;
+})()`;
+
+/**
+ * Open each truncated tweet in a new tab and extract the full text.
+ * Returns a map of tweet URL → full text for tweets that were expanded.
+ */
+export async function expandTruncatedTweets(
+  tweets: TweetData[],
+): Promise<Map<string, string>> {
+  const truncated = tweets.filter((t) => t.truncated && t.url);
+  if (truncated.length === 0 || !context) return new Map();
+
+  const expanded = new Map<string, string>();
+  const page = await context.newPage();
+
+  try {
+    for (const tweet of truncated) {
+      try {
+        await page.goto(tweet.url, {
+          timeout: 15000,
+          waitUntil: 'domcontentloaded',
+        });
+        await page
+          .waitForSelector('[data-testid="tweetText"]', { timeout: 8000 })
+          .catch(() => null);
+        await page.waitForTimeout(1000);
+
+        const fullText: string | null = await page.evaluate(
+          EXTRACT_FULL_TWEET_JS,
+        );
+        if (fullText && fullText.length > tweet.text.length) {
+          expanded.set(tweet.url, fullText);
+          logger.info(
+            {
+              url: tweet.url,
+              before: tweet.text.length,
+              after: fullText.length,
+            },
+            'Expanded truncated tweet',
+          );
+        }
+      } catch (err) {
+        logger.debug({ err, url: tweet.url }, 'Failed to expand tweet');
+      }
+    }
+  } finally {
+    await page.close().catch(() => {});
+  }
+
+  return expanded;
 }
 
 export async function close(): Promise<void> {
