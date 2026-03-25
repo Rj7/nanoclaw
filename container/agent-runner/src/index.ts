@@ -437,6 +437,11 @@ async function runQuery(
   }
 
   const toolCounts: Record<string, number> = {};
+  // Buffer text blocks and flush them when a tool_use arrives, so intermediate
+  // text (before tool calls) isn't lost — the SDK's result.result only contains
+  // the last text block of the last assistant message.
+  let pendingText = '';
+  const emittedTexts = new Set<string>();
 
   for await (const message of query({
     prompt: stream,
@@ -513,6 +518,20 @@ async function runQuery(
       const texts = content.filter(c => c.type === 'text' && c.text).map(c => (c.text as string).slice(0, 120));
       if (tools.length) detail += ` tools=[${tools.join(',')}]`;
       if (texts.length) detail += ` text="${texts[0]}${texts[0] && texts[0].length >= 120 ? '...' : ''}"`;
+
+      // Buffer text blocks; flush when a tool_use message arrives.
+      const fullTexts = content
+        .filter(c => c.type === 'text' && c.text)
+        .map(c => c.text as string);
+      if (fullTexts.length > 0) {
+        if (pendingText) pendingText += '\n\n';
+        pendingText += fullTexts.join('\n\n');
+      }
+      if (tools.length > 0 && pendingText) {
+        emittedTexts.add(pendingText);
+        writeOutput({ status: 'success', result: pendingText, newSessionId });
+        pendingText = '';
+      }
     }
     log(`[msg #${messageCount}] type=${msgType}${detail}`);
 
@@ -549,9 +568,12 @@ async function runQuery(
         log(`Cost: $${costUsd.toFixed(4)} tokens=${inputTokens ?? 0}in/${outputTokens ?? 0}out turns=${numTurns ?? '?'}`);
       }
 
+      // Skip text that was already emitted as an intermediate block
+      const dedupedResult = textResult && !emittedTexts.has(textResult) ? textResult : null;
+
       writeOutput({
         status: 'success',
-        result: textResult,
+        result: dedupedResult,
         newSessionId,
         costUsd,
         durationMs,

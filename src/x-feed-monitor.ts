@@ -242,10 +242,7 @@ async function pollCycle(): Promise<void> {
         updateXFeedTweetText(url, fullText, tickers);
       }
       if (expanded.size > 0) {
-        logger.info(
-          { expanded: expanded.size },
-          'Expanded truncated tweets',
-        );
+        logger.info({ expanded: expanded.size }, 'Expanded truncated tweets');
       }
     } catch (err) {
       logger.debug({ err }, 'Failed to expand truncated tweets');
