@@ -6,7 +6,9 @@ export const config = {
   chromePath: process.env.CHROME_PATH || (process.platform === 'darwin'
     ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
     : '/usr/bin/google-chrome'),
-  browserDataDir: path.join(PROJECT_ROOT, 'data', 'substack-feed-browser-profile'),
+  // On-demand scripts use a separate browser profile to avoid locking
+  // conflicts with the feed monitor which holds the main profile open 24/7.
+  browserDataDir: path.join(PROJECT_ROOT, 'data', 'substack-ondemand-browser-profile'),
   authPath: path.join(PROJECT_ROOT, 'data', 'substack-feed-auth.json'),
   viewport: { width: 1280, height: 800 },
   timeouts: {
