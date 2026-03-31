@@ -17,6 +17,21 @@ function runScript(script: string, args: object): Promise<SkillResult> {
   return runSkillScript('substack-integration', script, args);
 }
 
+const PROJECT_ROOT = process.cwd();
+
+/** Translate absolute host image paths to container-relative paths. */
+function translateImagePaths(images: string | null): string | null {
+  if (!images) return null;
+  try {
+    const paths: string[] = JSON.parse(images);
+    return JSON.stringify(
+      paths.map((p) => p.replace(PROJECT_ROOT, '/workspace/project')),
+    );
+  } catch {
+    return images;
+  }
+}
+
 /** Substack tools that only read from the local DB — safe for non-main groups. */
 const SUBSTACK_READ_ONLY_TYPES = new Set([
   'substack_feed_query',
@@ -78,6 +93,8 @@ export async function handleSubstackIpc(
       if (posts.length > 0) {
         const annotated = posts.map((p) => ({
           ...p,
+          images: translateImagePaths(p.images),
+          image_count: p.images ? JSON.parse(p.images).length : 0,
           likely_truncated:
             p.word_count > 0 && p.word_count < TRUNCATED_THRESHOLD,
         }));

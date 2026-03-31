@@ -23,6 +23,7 @@ import * as browser from './substack-feed-browser.js';
 import {
   initDatabase,
   getStoredPostUrls,
+  getAllSubstackPostUrls,
   saveSubstackFeedPostsBatch,
   pruneSubstackFeedPosts,
   type SubstackFeedPostRow,
@@ -230,6 +231,24 @@ async function pollCycle(): Promise<void> {
     const pruned = pruneSubstackFeedPosts(90);
     if (pruned > 0) {
       logger.info({ pruned }, 'Pruned old Substack posts');
+      // Clean up orphaned image directories
+      try {
+        const allUrls = getAllSubstackPostUrls();
+        const activeSlugs = new Set(
+          allUrls
+            .map((url: string) => url.match(/\/p\/([^?#]+)/)?.[1])
+            .filter(Boolean),
+        );
+        if (fs.existsSync(IMAGES_DIR)) {
+          for (const dir of fs.readdirSync(IMAGES_DIR)) {
+            if (!activeSlugs.has(dir)) {
+              fs.rmSync(path.join(IMAGES_DIR, dir), { recursive: true, force: true });
+            }
+          }
+        }
+      } catch (err) {
+        logger.debug({ err }, 'Failed to clean orphaned image dirs');
+      }
     }
   }
 }

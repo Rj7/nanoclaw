@@ -211,6 +211,7 @@ export async function runScript<T>(
     const input = await readInput<T>();
     const result = await handler(input);
     writeResult(result);
+    process.exit(0);
   } catch (err) {
     writeResult({
       success: false,

@@ -22,10 +22,10 @@ export const config = {
     : '/usr/bin/google-chrome'),
 
   // Browser profile directory for persistent login sessions
-  browserDataDir: path.join(PROJECT_ROOT, 'data', 'x-browser-profile'),
+  browserDataDir: path.join(PROJECT_ROOT, 'data', 'x-feed-browser-profile'),
 
   // Auth state marker file
-  authPath: path.join(PROJECT_ROOT, 'data', 'x-auth.json'),
+  authPath: path.join(PROJECT_ROOT, 'data', 'x-feed-auth.json'),
 
   // Browser viewport settings
   viewport: {

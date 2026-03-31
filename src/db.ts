@@ -889,6 +889,13 @@ export function getStoredPostUrls(urls: string[]): Set<string> {
   return new Set(rows.map((r) => r.post_url));
 }
 
+export function getAllSubstackPostUrls(): string[] {
+  const rows = db
+    .prepare('SELECT post_url FROM substack_feed_posts')
+    .all() as { post_url: string }[];
+  return rows.map((r) => r.post_url);
+}
+
 export function searchSubstackFeedPosts(opts: {
   author?: string;
   publication?: string;

@@ -4,7 +4,7 @@
 .PHONY: help status start stop restart logs logs-error logs-setup \
         build dev container memory memory-main memory-global conversations \
         groups db-groups db-sessions db-tasks test format typecheck clean \
-        agent agents containers cost cost-today cost-week \
+        agent agent-tail agents containers cost cost-today cost-week \
         x-feed-start x-feed-stop x-feed-status x-feed-logs x-feed-setup
 
 # ── Service ──────────────────────────────────────────────────
@@ -41,16 +41,39 @@ logs-agent: ## Tail latest agent container log
 	if [ -n "$$latest" ]; then tail -f "$$latest"; else echo "No agent logs found"; fi
 
 agent: ## Show what the agent is currently working on
-	@running=$$(docker ps --filter "name=nanoclaw-" --format "{{.Names}} ({{.RunningFor}})" 2>/dev/null); \
-	if [ -n "$$running" ]; then \
-		echo "\033[36m── Active Container ──\033[0m"; \
-		echo "$$running"; echo ""; \
-		container=$$(docker ps --filter "name=nanoclaw-" --format "{{.Names}}" | head -1); \
+agent-tail: ## Follow agent activity live
+	@container=$$(docker ps --filter "name=nanoclaw-" --format "{{.Names}}" | head -1); \
+	if [ -n "$$container" ]; then \
+		group=$$(echo "$$container" | sed 's/nanoclaw-//;s/-[0-9]*$$//' | tr '-' '_'); \
+		jid=$$(sqlite3 store/messages.db "SELECT jid FROM registered_groups WHERE folder = '$$group'" 2>/dev/null); \
+		echo "\033[36m── $$group ──\033[0m"; \
+		echo "\033[33mInput:\033[0m"; \
+		if [ -n "$$jid" ]; then \
+			sqlite3 store/messages.db "SELECT sender_name || ': ' || replace(substr(content, 1, 120), char(10), ' ') FROM messages WHERE chat_jid = '$$jid' AND is_from_me = 0 ORDER BY timestamp DESC LIMIT 5;" 2>/dev/null | tac; \
+		fi; \
+		echo ""; \
+		echo "\033[33mTailing...\033[0m"; \
+		docker logs -f "$$container" 2>&1 | grep --line-buffered -E "tools=|text=|Result #|Session init|Received input|rate_limit"; \
+	else echo "No agent running"; fi
+
+	@for container in $$(docker ps --filter "name=nanoclaw-" --format "{{.Names}}" 2>/dev/null); do \
+		group=$$(echo "$$container" | sed 's/nanoclaw-//;s/-[0-9]*$$//' | tr '-' '_'); \
+		uptime=$$(docker ps --filter "name=$$container" --format "{{.RunningFor}}" 2>/dev/null); \
 		msgs=$$(docker logs "$$container" 2>&1 | grep -c "\[msg #" 2>/dev/null || echo 0); \
-		echo "Messages processed: $$msgs"; echo ""; \
-		echo "\033[36m── Recent Activity ──\033[0m"; \
-		docker logs "$$container" 2>&1 | grep -E "tools=|text=|Result #|Session init" | tail -15; \
-	else echo "No agent running"; \
+		echo "\033[36m── $$group (up $$uptime, $$msgs msgs) ──\033[0m"; \
+		echo ""; \
+		echo "\033[33mInput:\033[0m"; \
+		jid=$$(sqlite3 store/messages.db "SELECT jid FROM registered_groups WHERE folder = '$$group'" 2>/dev/null); \
+		if [ -n "$$jid" ]; then \
+			sqlite3 store/messages.db "SELECT sender_name || ': ' || replace(substr(content, 1, 120), char(10), ' ') FROM messages WHERE chat_jid = '$$jid' AND is_from_me = 0 ORDER BY timestamp DESC LIMIT 5;" 2>/dev/null | tac; \
+		fi; \
+		echo ""; \
+		echo "\033[33mActivity:\033[0m"; \
+		docker logs "$$container" 2>&1 | grep -E "tools=|text=|Result #|Session init" | tail -10; \
+		echo ""; \
+	done; \
+	if [ -z "$$(docker ps --filter 'name=nanoclaw-' -q 2>/dev/null)" ]; then \
+		echo "No agent running"; \
 		echo ""; echo "\033[36m── Last Run ──\033[0m"; \
 		sqlite3 -header -column store/messages.db \
 			"SELECT group_folder AS 'group', status, printf('\$$%.4f', cost_usd) AS cost, input_tokens||'in/'||output_tokens||'out' AS tokens, substr(started_at, 1, 19) AS started FROM agent_runs ORDER BY started_at DESC LIMIT 3;" 2>/dev/null || echo "(no runs yet)"; \

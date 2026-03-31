@@ -465,11 +465,8 @@ registerXTool('x_feed_authors',
 
 // --- Substack Read Tools ---
 
-registerIpcTool('substack_inbox', 'Get recent posts from your Substack subscriptions. Main group only.',
-  { count: z.number().min(1).max(30).optional().describe('Number of posts (default 15, max 30)') },
-  (args) => ({ count: args.count || 15 }),
-  SUBSTACK_RESULTS_DIR,
-);
+// substack_inbox removed — substack_feed_query covers this use case and falls back to live inbox when needed.
+// Keeping substack_inbox exposed caused the agent to call it instead of substack_feed_query despite explicit instructions.
 
 registerIpcTool('substack_read', 'Read a specific Substack article with full text. Works with paid subscriptions. Main group only.',
   { url: z.string().describe('The Substack article URL') },
