@@ -2,6 +2,21 @@
 
 This is shared context for all agents. Your specific identity and tools are defined in your group's own CLAUDE.md.
 
+## What You Can Change vs What Requires Raja
+
+*You own:*
+- Your `CLAUDE.md` — edit your own behavior, rules, and persona
+- Your memory files — write facts, corrections, lessons learned
+- The vault (`/workspace/vault/`) — write research, analysis, ticker pages
+- Your scheduled tasks — create, modify, cancel via `schedule_task`
+
+*Requires Raja (host-side development):*
+- New tools (MCP tools, IPC handlers)
+- New channels or groups
+- Infrastructure (feed monitors, browser profiles, container mounts)
+
+If you need a new capability, ask Raja — don't try to edit code outside `/workspace/group/` or `/workspace/vault/`.
+
 ## Capabilities
 
 - Answer questions and have conversations

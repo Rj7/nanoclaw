@@ -242,7 +242,10 @@ async function pollCycle(): Promise<void> {
         if (fs.existsSync(IMAGES_DIR)) {
           for (const dir of fs.readdirSync(IMAGES_DIR)) {
             if (!activeSlugs.has(dir)) {
-              fs.rmSync(path.join(IMAGES_DIR, dir), { recursive: true, force: true });
+              fs.rmSync(path.join(IMAGES_DIR, dir), {
+                recursive: true,
+                force: true,
+              });
             }
           }
         }
