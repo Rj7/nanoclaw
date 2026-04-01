@@ -442,6 +442,10 @@ async function runQuery(
   // the last text block of the last assistant message.
   let pendingText = '';
   const emittedTexts = new Set<string>();
+  // When resuming a session, the SDK may replay the previous assistant turn.
+  // Suppress intermediate text emission until we see the first result (which
+  // marks the end of the replayed turn). After that, new content is safe to emit.
+  let seenFirstResult = !sessionId; // true if not resuming (no suppression needed)
 
   for await (const message of query({
     prompt: stream,
@@ -520,17 +524,20 @@ async function runQuery(
       if (texts.length) detail += ` text="${texts[0]}${texts[0] && texts[0].length >= 120 ? '...' : ''}"`;
 
       // Buffer text blocks; flush when a tool_use message arrives.
-      const fullTexts = content
-        .filter(c => c.type === 'text' && c.text)
-        .map(c => c.text as string);
-      if (fullTexts.length > 0) {
-        if (pendingText) pendingText += '\n\n';
-        pendingText += fullTexts.join('\n\n');
-      }
-      if (tools.length > 0 && pendingText) {
-        emittedTexts.add(pendingText);
-        writeOutput({ status: 'success', result: pendingText, newSessionId });
-        pendingText = '';
+      // Skip during session replay (before first result) to avoid resending old responses.
+      if (seenFirstResult) {
+        const fullTexts = content
+          .filter(c => c.type === 'text' && c.text)
+          .map(c => c.text as string);
+        if (fullTexts.length > 0) {
+          if (pendingText) pendingText += '\n\n';
+          pendingText += fullTexts.join('\n\n');
+        }
+        if (tools.length > 0 && pendingText) {
+          emittedTexts.add(pendingText);
+          writeOutput({ status: 'success', result: pendingText, newSessionId });
+          pendingText = '';
+        }
       }
     }
     log(`[msg #${messageCount}] type=${msgType}${detail}`);
@@ -551,6 +558,10 @@ async function runQuery(
 
     if (message.type === 'result') {
       resultCount++;
+      if (!seenFirstResult) {
+        seenFirstResult = true;
+        log('First result seen — replay phase complete, new content will be emitted');
+      }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const resultMsg = message as any;
       const textResult = resultMsg.result || null;
