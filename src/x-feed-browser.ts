@@ -77,12 +77,38 @@ export const EXTRACT_TWEETS_JS = `(function() {
     }
     var showMoreEl = article.querySelector('[data-testid="tweet-text-show-more-link"]');
     var truncated = !!showMoreEl;
+    // Detect reply context — X renders "Replying to @handle" above the tweet text
+    var inReplyToUrl = '';
+    var socialCtx = article.querySelectorAll('a[href*="/status/"]');
+    // Check for "Replying to" text in the social context area above tweet text
+    var replyCtxEl = article.querySelector('[data-testid="User-Name"]');
+    var parentEl = replyCtxEl ? replyCtxEl.parentElement : null;
+    // Walk siblings above the tweet text looking for reply indicator
+    var allText = article.innerText || '';
+    var replyMatch = allText.match(/Replying to\\s+@([A-Za-z0-9_]+)/);
+    if (replyMatch && tweetLink) {
+      // This tweet is a reply — build parent URL from conversation thread
+      // The tweet URL contains the conversation; X embeds the parent in the thread view
+      inReplyToUrl = '@' + replyMatch[1];
+    }
+    // Detect quoted tweet URL from the embedded quote container
+    var quotedTweetUrl = '';
+    var quotedContainer = article.querySelector('[data-testid="quoteTweet"]') || article.querySelector('div[role="link"][tabindex="0"]');
+    if (quotedContainer && quotedText) {
+      var qtLink = quotedContainer.querySelector('a[href*="/status/"]');
+      if (qtLink) {
+        var qtHref = qtLink.getAttribute('href') || '';
+        if (qtHref && qtHref !== tweetLink) quotedTweetUrl = 'https://x.com' + qtHref;
+      }
+    }
     results.push({
       author: displayName, handle: handle, text: tweetText,
       quotedText: quotedText, truncated: truncated,
       url: tweetLink ? 'https://x.com' + tweetLink : '',
       time: time, likes: getMetric('like'), retweets: getMetric('retweet'), replies: getMetric('reply'),
-      imageUrls: imageUrls
+      imageUrls: imageUrls,
+      inReplyToHandle: inReplyToUrl,
+      quotedTweetUrl: quotedTweetUrl
     });
   }
   return results;
@@ -100,6 +126,8 @@ export interface TweetData {
   retweets: number;
   replies: number;
   imageUrls: string[];
+  inReplyToHandle: string;
+  quotedTweetUrl: string;
 }
 
 let context: BrowserContext | null = null;
@@ -247,6 +275,77 @@ export async function expandTruncatedTweets(
   }
 
   return expanded;
+}
+
+// JS to extract the parent tweet URL + text from an individual tweet's thread page.
+// When viewing a reply, X renders the parent tweet(s) as articles above the focused one.
+// The focused tweet's URL matches the page URL; the parent is the article before it.
+const EXTRACT_PARENT_TWEET_JS = `(function() {
+  var articles = document.querySelectorAll('article[data-testid="tweet"]');
+  if (articles.length < 2) return null;
+  // The first article in the thread is the parent (or earliest ancestor)
+  var parent = articles[0];
+  var timeEl = parent.querySelector('time');
+  var linkEl = timeEl ? timeEl.closest('a') : null;
+  var href = linkEl ? (linkEl.getAttribute('href') || '') : '';
+  var url = href ? 'https://x.com' + href : '';
+  var userNameEl = parent.querySelector('[data-testid="User-Name"]');
+  var nameText = userNameEl ? userNameEl.textContent : '';
+  var handleMatch = nameText.match(/@([A-Za-z0-9_]+)/);
+  var handle = handleMatch ? '@' + handleMatch[1] : '';
+  var tweetTextEls = parent.querySelectorAll('[data-testid="tweetText"]');
+  var text = tweetTextEls.length > 0 ? tweetTextEls[0].textContent : '';
+  if (!url) return null;
+  return { url: url, handle: handle, text: text };
+})()`;
+
+/**
+ * Open each reply tweet in a new tab and extract the parent tweet URL.
+ * Returns a map of reply tweet URL → parent tweet URL.
+ */
+export async function resolveReplyParents(
+  tweets: TweetData[],
+): Promise<Map<string, string>> {
+  const replies = tweets.filter((t) => t.inReplyToHandle && t.url);
+  if (replies.length === 0 || !context) return new Map();
+
+  const resolved = new Map<string, string>();
+  const page = await context.newPage();
+
+  try {
+    for (const tweet of replies) {
+      try {
+        await page.goto(tweet.url, {
+          timeout: 15000,
+          waitUntil: 'domcontentloaded',
+        });
+        await page
+          .waitForSelector('article[data-testid="tweet"]', { timeout: 8000 })
+          .catch(() => null);
+        await page.waitForTimeout(1000);
+
+        const parent = await page.evaluate(EXTRACT_PARENT_TWEET_JS) as {
+          url: string;
+          handle: string;
+          text: string;
+        } | null;
+
+        if (parent?.url && parent.url !== tweet.url) {
+          resolved.set(tweet.url, parent.url);
+          logger.info(
+            { reply: tweet.url, parent: parent.url },
+            'Resolved reply parent',
+          );
+        }
+      } catch (err) {
+        logger.debug({ err, url: tweet.url }, 'Failed to resolve reply parent');
+      }
+    }
+  } finally {
+    await page.close().catch(() => {});
+  }
+
+  return resolved;
 }
 
 export async function close(): Promise<void> {

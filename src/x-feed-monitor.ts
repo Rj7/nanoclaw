@@ -25,6 +25,7 @@ import {
   getStoredTweetUrls,
   saveXFeedTweetsBatch,
   updateXFeedTweetText,
+  updateXFeedTweetReplyParent,
   pruneXFeedTweets,
   pruneXFeedSeen,
   type XFeedTweetRow,
@@ -212,6 +213,8 @@ async function pollCycle(): Promise<void> {
       replies: tweet.replies,
       collected_at: now,
       images,
+      in_reply_to: tweet.inReplyToHandle || null,
+      quoted_tweet_url: tweet.quotedTweetUrl || null,
     });
   }
 
@@ -246,6 +249,31 @@ async function pollCycle(): Promise<void> {
       }
     } catch (err) {
       logger.debug({ err }, 'Failed to expand truncated tweets');
+    }
+  }
+
+  // Resolve reply parents by opening reply tweets and extracting the parent URL
+  const replyNew = newTweets.filter(
+    (t) =>
+      t.in_reply_to &&
+      !t.in_reply_to.startsWith('https://'),
+  );
+  if (replyNew.length > 0) {
+    try {
+      const resolved = await browser.resolveReplyParents(
+        tweets.filter((t) =>
+          t.inReplyToHandle &&
+          replyNew.some((n) => n.tweet_url === t.url),
+        ),
+      );
+      for (const [replyUrl, parentUrl] of resolved) {
+        updateXFeedTweetReplyParent(replyUrl, parentUrl);
+      }
+      if (resolved.size > 0) {
+        logger.info({ resolved: resolved.size }, 'Resolved reply parents');
+      }
+    } catch (err) {
+      logger.debug({ err }, 'Failed to resolve reply parents');
     }
   }
 

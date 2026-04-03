@@ -176,6 +176,22 @@ function createSchema(database: Database.Database): void {
     /* column already exists */
   }
 
+  // Add thread context columns for tweet replies and quotes
+  try {
+    database.exec(
+      `ALTER TABLE x_feed_tweets ADD COLUMN in_reply_to TEXT`,
+    );
+  } catch {
+    /* column already exists */
+  }
+  try {
+    database.exec(
+      `ALTER TABLE x_feed_tweets ADD COLUMN quoted_tweet_url TEXT`,
+    );
+  } catch {
+    /* column already exists */
+  }
+
   // Add assistant_name column for per-group bot names
   try {
     database.exec(
@@ -691,13 +707,15 @@ export interface XFeedTweetRow {
   replies: number;
   collected_at: string;
   images: string | null;
+  in_reply_to: string | null;
+  quoted_tweet_url: string | null;
 }
 
 export function saveXFeedTweetsBatch(tweets: XFeedTweetRow[]): number {
   if (tweets.length === 0) return 0;
   const stmt = db.prepare(
-    `INSERT OR IGNORE INTO x_feed_tweets (tweet_url, author, handle, text, tickers, tweet_time, likes, retweets, replies, collected_at, images)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT OR IGNORE INTO x_feed_tweets (tweet_url, author, handle, text, tickers, tweet_time, likes, retweets, replies, collected_at, images, in_reply_to, quoted_tweet_url)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
   let inserted = 0;
   const insertAll = db.transaction(() => {
@@ -714,6 +732,8 @@ export function saveXFeedTweetsBatch(tweets: XFeedTweetRow[]): number {
         t.replies,
         t.collected_at,
         t.images,
+        t.in_reply_to,
+        t.quoted_tweet_url,
       );
       inserted += result.changes;
     }
@@ -741,6 +761,15 @@ export function updateXFeedTweetText(
   db.prepare(
     `UPDATE x_feed_tweets SET text = ?, tickers = ? WHERE tweet_url = ?`,
   ).run(text, tickers, tweetUrl);
+}
+
+export function updateXFeedTweetReplyParent(
+  tweetUrl: string,
+  parentUrl: string,
+): void {
+  db.prepare(
+    `UPDATE x_feed_tweets SET in_reply_to = ? WHERE tweet_url = ?`,
+  ).run(parentUrl, tweetUrl);
 }
 
 export function searchXFeedTweets(opts: {
