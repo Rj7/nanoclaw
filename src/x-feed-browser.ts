@@ -324,7 +324,7 @@ export async function resolveReplyParents(
           .catch(() => null);
         await page.waitForTimeout(1000);
 
-        const parent = await page.evaluate(EXTRACT_PARENT_TWEET_JS) as {
+        const parent = (await page.evaluate(EXTRACT_PARENT_TWEET_JS)) as {
           url: string;
           handle: string;
           text: string;

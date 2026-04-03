@@ -368,11 +368,11 @@ async function runQuery(
   resumeAt?: string,
 ): Promise<{ newSessionId?: string; lastAssistantUuid?: string; closedDuringQuery: boolean }> {
   const stream = new MessageStream();
-  stream.push(prompt);
 
-  // Load image attachments and send as multimodal content blocks
+  // Combine text + images into a single multimodal message so the SDK
+  // sees everything at once (avoids responding to text before seeing images).
   if (containerInput.imageAttachments?.length) {
-    const blocks: ContentBlock[] = [];
+    const blocks: ContentBlock[] = [{ type: 'text', text: prompt }];
     for (const img of containerInput.imageAttachments) {
       const imgPath = path.join('/workspace/group', img.relativePath);
       try {
@@ -382,9 +382,9 @@ async function runQuery(
         log(`Failed to load image: ${imgPath}`);
       }
     }
-    if (blocks.length > 0) {
-      stream.pushMultimodal(blocks);
-    }
+    stream.pushMultimodal(blocks);
+  } else {
+    stream.push(prompt);
   }
 
   // Poll IPC for follow-up messages and _close sentinel during the query

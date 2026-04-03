@@ -178,16 +178,12 @@ function createSchema(database: Database.Database): void {
 
   // Add thread context columns for tweet replies and quotes
   try {
-    database.exec(
-      `ALTER TABLE x_feed_tweets ADD COLUMN in_reply_to TEXT`,
-    );
+    database.exec(`ALTER TABLE x_feed_tweets ADD COLUMN in_reply_to TEXT`);
   } catch {
     /* column already exists */
   }
   try {
-    database.exec(
-      `ALTER TABLE x_feed_tweets ADD COLUMN quoted_tweet_url TEXT`,
-    );
+    database.exec(`ALTER TABLE x_feed_tweets ADD COLUMN quoted_tweet_url TEXT`);
   } catch {
     /* column already exists */
   }

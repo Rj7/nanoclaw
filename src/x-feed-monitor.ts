@@ -254,16 +254,14 @@ async function pollCycle(): Promise<void> {
 
   // Resolve reply parents by opening reply tweets and extracting the parent URL
   const replyNew = newTweets.filter(
-    (t) =>
-      t.in_reply_to &&
-      !t.in_reply_to.startsWith('https://'),
+    (t) => t.in_reply_to && !t.in_reply_to.startsWith('https://'),
   );
   if (replyNew.length > 0) {
     try {
       const resolved = await browser.resolveReplyParents(
-        tweets.filter((t) =>
-          t.inReplyToHandle &&
-          replyNew.some((n) => n.tweet_url === t.url),
+        tweets.filter(
+          (t) =>
+            t.inReplyToHandle && replyNew.some((n) => n.tweet_url === t.url),
         ),
       );
       for (const [replyUrl, parentUrl] of resolved) {
