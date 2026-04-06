@@ -77,21 +77,12 @@ export const EXTRACT_TWEETS_JS = `(function() {
     }
     var showMoreEl = article.querySelector('[data-testid="tweet-text-show-more-link"]');
     var truncated = !!showMoreEl;
-    // Detect reply context — X renders "Replying to @handle" above the tweet text
+    // X renders "Replying to @handle" above the tweet text for replies
     var inReplyToUrl = '';
-    var socialCtx = article.querySelectorAll('a[href*="/status/"]');
-    // Check for "Replying to" text in the social context area above tweet text
-    var replyCtxEl = article.querySelector('[data-testid="User-Name"]');
-    var parentEl = replyCtxEl ? replyCtxEl.parentElement : null;
-    // Walk siblings above the tweet text looking for reply indicator
-    var allText = article.innerText || '';
-    var replyMatch = allText.match(/Replying to\\s+@([A-Za-z0-9_]+)/);
+    var replyMatch = (article.textContent || '').match(/Replying to\\s+@([A-Za-z0-9_]+)/);
     if (replyMatch && tweetLink) {
-      // This tweet is a reply — build parent URL from conversation thread
-      // The tweet URL contains the conversation; X embeds the parent in the thread view
       inReplyToUrl = '@' + replyMatch[1];
     }
-    // Detect quoted tweet URL from the embedded quote container
     var quotedTweetUrl = '';
     var quotedContainer = article.querySelector('[data-testid="quoteTweet"]') || article.querySelector('div[role="link"][tabindex="0"]');
     if (quotedContainer && quotedText) {
@@ -228,124 +219,90 @@ const EXTRACT_FULL_TWEET_JS = `(function() {
 })()`;
 
 /**
- * Open each truncated tweet in a new tab and extract the full text.
- * Returns a map of tweet URL → full text for tweets that were expanded.
+ * Visit each tweet URL in a new tab, run extractJs, and collect results.
+ * Shared by expandTruncatedTweets and resolveReplyParents.
  */
-export async function expandTruncatedTweets(
+async function visitTweetPages<T>(
   tweets: TweetData[],
+  waitSelector: string,
+  extractJs: string,
+  accept: (tweet: TweetData, result: T) => string | null,
+  logLabel: string,
 ): Promise<Map<string, string>> {
-  const truncated = tweets.filter((t) => t.truncated && t.url);
-  if (truncated.length === 0 || !context) return new Map();
+  if (tweets.length === 0 || !context) return new Map();
 
-  const expanded = new Map<string, string>();
+  const results = new Map<string, string>();
   const page = await context.newPage();
 
   try {
-    for (const tweet of truncated) {
+    for (const tweet of tweets) {
       try {
         await page.goto(tweet.url, {
           timeout: 15000,
           waitUntil: 'domcontentloaded',
         });
         await page
-          .waitForSelector('[data-testid="tweetText"]', { timeout: 8000 })
+          .waitForSelector(waitSelector, { timeout: 8000 })
           .catch(() => null);
         await page.waitForTimeout(1000);
 
-        const fullText: string | null = await page.evaluate(
-          EXTRACT_FULL_TWEET_JS,
-        );
-        if (fullText && fullText.length > tweet.text.length) {
-          expanded.set(tweet.url, fullText);
-          logger.info(
-            {
-              url: tweet.url,
-              before: tweet.text.length,
-              after: fullText.length,
-            },
-            'Expanded truncated tweet',
-          );
+        const extracted = (await page.evaluate(extractJs)) as T | null;
+        if (extracted) {
+          const value = accept(tweet, extracted);
+          if (value) {
+            results.set(tweet.url, value);
+            logger.info({ url: tweet.url }, logLabel);
+          }
         }
       } catch (err) {
-        logger.debug({ err, url: tweet.url }, 'Failed to expand tweet');
+        logger.debug({ err, url: tweet.url }, `Failed: ${logLabel}`);
       }
     }
   } finally {
     await page.close().catch(() => {});
   }
 
-  return expanded;
+  return results;
 }
 
-// JS to extract the parent tweet URL + text from an individual tweet's thread page.
-// When viewing a reply, X renders the parent tweet(s) as articles above the focused one.
-// The focused tweet's URL matches the page URL; the parent is the article before it.
+export function expandTruncatedTweets(
+  tweets: TweetData[],
+): Promise<Map<string, string>> {
+  return visitTweetPages<string>(
+    tweets.filter((t) => t.truncated && t.url),
+    '[data-testid="tweetText"]',
+    EXTRACT_FULL_TWEET_JS,
+    (tweet, fullText) =>
+      fullText.length > tweet.text.length ? fullText : null,
+    'Expanded truncated tweet',
+  );
+}
+
+// Extract parent tweet URL from a reply's thread page.
+// The first article above the focused tweet is the parent.
 const EXTRACT_PARENT_TWEET_JS = `(function() {
   var articles = document.querySelectorAll('article[data-testid="tweet"]');
   if (articles.length < 2) return null;
-  // The first article in the thread is the parent (or earliest ancestor)
   var parent = articles[0];
   var timeEl = parent.querySelector('time');
   var linkEl = timeEl ? timeEl.closest('a') : null;
   var href = linkEl ? (linkEl.getAttribute('href') || '') : '';
   var url = href ? 'https://x.com' + href : '';
-  var userNameEl = parent.querySelector('[data-testid="User-Name"]');
-  var nameText = userNameEl ? userNameEl.textContent : '';
-  var handleMatch = nameText.match(/@([A-Za-z0-9_]+)/);
-  var handle = handleMatch ? '@' + handleMatch[1] : '';
-  var tweetTextEls = parent.querySelectorAll('[data-testid="tweetText"]');
-  var text = tweetTextEls.length > 0 ? tweetTextEls[0].textContent : '';
   if (!url) return null;
-  return { url: url, handle: handle, text: text };
+  return { url: url };
 })()`;
 
-/**
- * Open each reply tweet in a new tab and extract the parent tweet URL.
- * Returns a map of reply tweet URL → parent tweet URL.
- */
-export async function resolveReplyParents(
+export function resolveReplyParents(
   tweets: TweetData[],
 ): Promise<Map<string, string>> {
-  const replies = tweets.filter((t) => t.inReplyToHandle && t.url);
-  if (replies.length === 0 || !context) return new Map();
-
-  const resolved = new Map<string, string>();
-  const page = await context.newPage();
-
-  try {
-    for (const tweet of replies) {
-      try {
-        await page.goto(tweet.url, {
-          timeout: 15000,
-          waitUntil: 'domcontentloaded',
-        });
-        await page
-          .waitForSelector('article[data-testid="tweet"]', { timeout: 8000 })
-          .catch(() => null);
-        await page.waitForTimeout(1000);
-
-        const parent = (await page.evaluate(EXTRACT_PARENT_TWEET_JS)) as {
-          url: string;
-          handle: string;
-          text: string;
-        } | null;
-
-        if (parent?.url && parent.url !== tweet.url) {
-          resolved.set(tweet.url, parent.url);
-          logger.info(
-            { reply: tweet.url, parent: parent.url },
-            'Resolved reply parent',
-          );
-        }
-      } catch (err) {
-        logger.debug({ err, url: tweet.url }, 'Failed to resolve reply parent');
-      }
-    }
-  } finally {
-    await page.close().catch(() => {});
-  }
-
-  return resolved;
+  return visitTweetPages<{ url: string }>(
+    tweets.filter((t) => t.inReplyToHandle && t.url),
+    'article[data-testid="tweet"]',
+    EXTRACT_PARENT_TWEET_JS,
+    (tweet, parent) =>
+      parent.url && parent.url !== tweet.url ? parent.url : null,
+    'Resolved reply parent',
+  );
 }
 
 export async function close(): Promise<void> {

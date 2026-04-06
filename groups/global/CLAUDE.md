@@ -120,3 +120,9 @@ Each session, you wake up fresh. Files are your memory.
 ## Obsidian Vault
 
 Shared knowledge vault at `/workspace/vault/`. Read `/workspace/vault/README.md` for structure and conventions when writing research.
+
+**Navigation:** Read `shared/INDEX.md` first when researching a topic — it catalogs every vault page. After creating or updating pages, update INDEX.md and append to `shared/LOG.md`.
+
+**Ingest workflow:** When processing a new source, follow README.md — summarize, update ticker pages, update INDEX.md, append to LOG.md, cross-reference with `[[wikilinks]]`. A single source may touch 5-10 pages.
+
+**File back research:** If a conversation produces substantial analysis, offer to save it as a vault page. Conversations are ephemeral; the vault is permanent.

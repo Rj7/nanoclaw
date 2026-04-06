@@ -41,7 +41,7 @@ RUN npm install -g agent-browser @anthropic-ai/claude-code substack-mcp-plus \
 
 # Install Python deps for finviz-mcp-server (source mounted at runtime)
 RUN pip3 install --break-system-packages \
-    "mcp>=1.9.1" requests pandas beautifulsoup4 python-dotenv pydantic aiohttp sec-edgar-api
+    "mcp>=1.9.1" requests pandas beautifulsoup4 python-dotenv pydantic aiohttp sec-edgar-api pyyaml
 
 # Copy portfolio source and tools (staged by build.sh from external repo)
 # If _portfolio-src only contains .empty, this is a harmless no-op
