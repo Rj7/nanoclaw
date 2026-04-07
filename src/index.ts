@@ -58,7 +58,7 @@ import { startSchedulerLoop } from './task-scheduler.js';
 import { Channel, NewMessage, RegisteredGroup } from './types.js';
 import { parseImageReferences } from './image.js';
 import { logger } from './logger.js';
-import { extractTickers, loadTickerContext } from './ticker-context.js';
+import { extractTickers, loadTickerContext, VAULT_TICKERS_DIR } from './ticker-context.js';
 
 // Re-export for backwards compatibility during refactor
 export { escapeXml, formatMessages } from './router.js';
@@ -258,6 +258,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   await channel.setTyping?.(chatJid, true);
   let hadError = false;
   let outputSentToUser = false;
+  let accumulatedOutput = ''; // Accumulate output for vault update check
 
   // Heartbeat: send periodic "still working" messages while agent is actively
   // processing. Stopped when agent completes (success/error), restarted when
@@ -310,6 +311,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
           await channel.sendMessage(chatJid, text);
           outputSentToUser = true;
           lastVisibleOutputAt = Date.now();
+          accumulatedOutput += text + '\n';
         }
         // Only reset idle timer on actual results, not session-update markers (result: null)
         resetIdleTimer();
@@ -318,6 +320,38 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
       if (result.status === 'success') {
         // Stop heartbeat — agent is idle waiting for next message, not processing
         stopHeartbeat();
+
+        // Vault update nudge: if the agent discussed tickers with vault pages,
+        // send a follow-up asking it to update them. Wrapped in <internal> so
+        // the update confirmation isn't sent to the user.
+        if (accumulatedOutput.length > 300) {
+          const outputTickers = extractTickers(accumulatedOutput);
+          const tickersWithPages = outputTickers.filter((t) => {
+            try {
+              fs.accessSync(
+                path.join(VAULT_TICKERS_DIR, `${t}.md`),
+                fs.constants.F_OK,
+              );
+              return true;
+            } catch {
+              return false;
+            }
+          });
+          if (tickersWithPages.length > 0) {
+            const nudge = queue.sendMessage(
+              chatJid,
+              `<system>You just discussed ${tickersWithPages.join(', ')}. If your response contained genuinely new data (thesis changes, new numbers, corrected assumptions, new risks), read and update the vault ticker pages now under your section. Include source links. Append to shared/LOG.md if you make changes. If nothing was genuinely new, do nothing. Wrap your entire response in <internal> tags.</system>`,
+            );
+            if (nudge) {
+              logger.info(
+                { tickers: tickersWithPages },
+                'Sent vault update nudge',
+              );
+            }
+          }
+          accumulatedOutput = '';
+        }
+
         queue.notifyIdle(chatJid);
       }
 

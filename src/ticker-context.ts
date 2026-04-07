@@ -2,7 +2,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
-const VAULT_TICKERS_DIR = path.join(
+export const VAULT_TICKERS_DIR = path.join(
   os.homedir(),
   'Obsidian',
   'Vault',
