@@ -58,7 +58,11 @@ import { startSchedulerLoop } from './task-scheduler.js';
 import { Channel, NewMessage, RegisteredGroup } from './types.js';
 import { parseImageReferences } from './image.js';
 import { logger } from './logger.js';
-import { extractTickers, loadTickerContext, VAULT_TICKERS_DIR } from './ticker-context.js';
+import {
+  extractTickers,
+  getExistingPages,
+  loadTickerContext,
+} from './ticker-context.js';
 
 // Re-export for backwards compatibility during refactor
 export { escapeXml, formatMessages } from './router.js';
@@ -326,17 +330,10 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
         // the update confirmation isn't sent to the user.
         if (accumulatedOutput.length > 300) {
           const outputTickers = extractTickers(accumulatedOutput);
-          const tickersWithPages = outputTickers.filter((t) => {
-            try {
-              fs.accessSync(
-                path.join(VAULT_TICKERS_DIR, `${t}.md`),
-                fs.constants.F_OK,
-              );
-              return true;
-            } catch {
-              return false;
-            }
-          });
+          const existingPages = getExistingPages();
+          const tickersWithPages = outputTickers.filter((t) =>
+            existingPages.has(t),
+          );
           if (tickersWithPages.length > 0) {
             const nudge = queue.sendMessage(
               chatJid,
@@ -349,8 +346,8 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
               );
             }
           }
-          accumulatedOutput = '';
         }
+        accumulatedOutput = '';
 
         queue.notifyIdle(chatJid);
       }

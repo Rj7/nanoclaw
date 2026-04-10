@@ -728,8 +728,19 @@ export function writeTasksSnapshot(
     ? tasks
     : tasks.filter((t) => t.groupFolder === groupFolder);
 
+  // Truncate prompts to avoid the SDK splitting multi-byte characters
+  // (e.g. emojis) mid-surrogate when displaying task lists, which corrupts
+  // the session JSONL with lone surrogates.
+  const safeTasks = filteredTasks.map((t) => ({
+    ...t,
+    prompt:
+      t.prompt.length > 80
+        ? [...t.prompt].slice(0, 80).join('') + '...'
+        : t.prompt,
+  }));
+
   const tasksFile = path.join(groupIpcDir, 'current_tasks.json');
-  fs.writeFileSync(tasksFile, JSON.stringify(filteredTasks, null, 2));
+  fs.writeFileSync(tasksFile, JSON.stringify(safeTasks, null, 2));
 }
 
 export interface AvailableGroup {

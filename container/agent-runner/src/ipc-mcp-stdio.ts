@@ -450,6 +450,15 @@ registerXTool('x_feed_query',
   false,
 );
 
+registerXTool('x_thread',
+  'Reconstruct a tweet thread by walking the reply chain upward from a tweet URL to the root. Returns tweets in chronological order (root first). Use this when you see a reply tweet and want the full conversation context.',
+  {
+    tweet_url: z.string().describe('The tweet URL to trace the thread from (e.g., https://x.com/user/status/123)'),
+  },
+  (args) => ({ tweetUrl: args.tweet_url }),
+  false,
+);
+
 registerXTool('x_feed_authors',
   'List authors/accounts that have appeared in your X feed. Use this to find handles when you don\'t remember the exact name — search by partial name or handle. Shows tweet count per author.',
   {

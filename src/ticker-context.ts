@@ -14,7 +14,7 @@ let cachedPageNames: Set<string> | null = null;
 let cacheTime = 0;
 const CACHE_TTL_MS = 60_000; // refresh directory listing every 60s
 
-function getExistingPages(): Set<string> {
+export function getExistingPages(): Set<string> {
   const now = Date.now();
   if (cachedPageNames && now - cacheTime < CACHE_TTL_MS) {
     return cachedPageNames;

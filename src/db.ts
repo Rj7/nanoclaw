@@ -813,6 +813,28 @@ export function searchXFeedTweets(opts: {
     .all(...params) as XFeedTweetRow[];
 }
 
+/**
+ * Walk the reply chain upward from a tweet URL to the thread root.
+ * Returns tweets in chronological order (root first).
+ */
+export function getThreadChain(tweetUrl: string): XFeedTweetRow[] {
+  const MAX_THREAD_DEPTH = 20;
+  const chain: XFeedTweetRow[] = [];
+  const seen = new Set<string>();
+  const stmt = db.prepare('SELECT * FROM x_feed_tweets WHERE tweet_url = ?');
+  let currentUrl: string | null = tweetUrl;
+
+  while (currentUrl && !seen.has(currentUrl) && chain.length < MAX_THREAD_DEPTH) {
+    seen.add(currentUrl);
+    const row = stmt.get(currentUrl) as XFeedTweetRow | undefined;
+    if (!row) break;
+    chain.unshift(row); // prepend — building from leaf to root
+    currentUrl = row.in_reply_to?.startsWith('https://') ? row.in_reply_to : null;
+  }
+
+  return chain;
+}
+
 export function getXFeedAuthors(opts?: {
   sinceHours?: number;
   search?: string;
