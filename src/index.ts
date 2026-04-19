@@ -312,18 +312,10 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
           `Agent output: ${[...raw].slice(0, 200).join('')}`,
         );
         if (text) {
-          // Don't forward raw API/SDK errors to the user
-          if (/^API Error: \d{3}\s*\{/.test(text)) {
-            logger.warn(
-              { group: group.name },
-              `Suppressed raw API error from user output: ${[...text].slice(0, 100).join('')}`,
-            );
-          } else {
-            await channel.sendMessage(chatJid, text);
-            outputSentToUser = true;
-            lastVisibleOutputAt = Date.now();
-            accumulatedOutput += text + '\n';
-          }
+          await channel.sendMessage(chatJid, text);
+          outputSentToUser = true;
+          lastVisibleOutputAt = Date.now();
+          accumulatedOutput += text + '\n';
         }
         // Only reset idle timer on actual results, not session-update markers (result: null)
         resetIdleTimer();
