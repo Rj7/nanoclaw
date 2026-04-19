@@ -233,7 +233,7 @@ async function runTask(
   const resultSummary = error
     ? `Error: ${error}`
     : result
-      ? result.slice(0, 200)
+      ? [...result].slice(0, 200).join('')
       : 'Completed';
   updateTaskAfterRun(task.id, nextRun, resultSummary);
 }

@@ -651,7 +651,7 @@ export function markXFeedTweetSeen(tweet: {
     tweet.url,
     tweet.author,
     tweet.handle,
-    tweet.text.slice(0, 200),
+    [...tweet.text].slice(0, 200).join(''),
     new Date().toISOString(),
   );
 }
@@ -671,7 +671,7 @@ export function markXFeedTweetsBatch(
         tweet.url,
         tweet.author,
         tweet.handle,
-        tweet.text.slice(0, 200),
+        [...tweet.text].slice(0, 200).join(''),
         now,
       );
     }
@@ -824,12 +824,18 @@ export function getThreadChain(tweetUrl: string): XFeedTweetRow[] {
   const stmt = db.prepare('SELECT * FROM x_feed_tweets WHERE tweet_url = ?');
   let currentUrl: string | null = tweetUrl;
 
-  while (currentUrl && !seen.has(currentUrl) && chain.length < MAX_THREAD_DEPTH) {
+  while (
+    currentUrl &&
+    !seen.has(currentUrl) &&
+    chain.length < MAX_THREAD_DEPTH
+  ) {
     seen.add(currentUrl);
     const row = stmt.get(currentUrl) as XFeedTweetRow | undefined;
     if (!row) break;
     chain.unshift(row); // prepend — building from leaf to root
-    currentUrl = row.in_reply_to?.startsWith('https://') ? row.in_reply_to : null;
+    currentUrl = row.in_reply_to?.startsWith('https://')
+      ? row.in_reply_to
+      : null;
   }
 
   return chain;

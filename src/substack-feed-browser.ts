@@ -48,7 +48,7 @@ export const EXTRACT_POSTS_JS = `(function() {
     var title = titleEl ? titleEl.textContent.trim() : '';
     if (!title) continue;
     var snippetEl = post.querySelector('.reader2-paragraph');
-    var snippet = snippetEl ? snippetEl.textContent.trim().slice(0, 200) : '';
+    var snippet = snippetEl ? [...snippetEl.textContent.trim()].slice(0, 200).join('') : '';
     var metaEl = post.querySelector('.reader2-item-meta');
     var metaText = metaEl ? metaEl.textContent.trim() : '';
     var headChildren = post.querySelector('.reader2-post-head');
@@ -228,7 +228,7 @@ export async function readArticle(
 
     // Truncate very long articles
     if (article.content.length > 50000) {
-      article.content = article.content.slice(0, 50000) + '\n\n[... truncated]';
+      article.content = [...article.content].slice(0, 50000).join('') + '\n\n[... truncated]';
     }
 
     return article;

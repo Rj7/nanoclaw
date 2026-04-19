@@ -14,7 +14,11 @@ import {
 import { searchXFeedTweets, getXFeedAuthors, getThreadChain } from './db.js';
 
 /** X tool types that only read from the local DB — safe for non-main groups. */
-const X_READ_ONLY_TYPES = new Set(['x_feed_query', 'x_feed_authors', 'x_thread']);
+const X_READ_ONLY_TYPES = new Set([
+  'x_feed_query',
+  'x_feed_authors',
+  'x_thread',
+]);
 
 function runScript(script: string, args: object): Promise<SkillResult> {
   return runSkillScript('x-integration', script, args);
@@ -165,9 +169,10 @@ export async function handleXIpc(
       const chain = getThreadChain(data.tweetUrl as string);
       result = {
         success: true,
-        message: chain.length > 0
-          ? `Thread chain: ${chain.length} tweets (root → leaf)`
-          : 'Tweet not found in saved feed or no parent chain',
+        message:
+          chain.length > 0
+            ? `Thread chain: ${chain.length} tweets (root → leaf)`
+            : 'Tweet not found in saved feed or no parent chain',
         data: chain,
       };
       break;

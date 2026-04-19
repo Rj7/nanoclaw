@@ -279,7 +279,7 @@ function formatTranscriptMarkdown(messages: ParsedMessage[], title?: string | nu
   for (const msg of messages) {
     const sender = msg.role === 'user' ? 'User' : (assistantName || 'Assistant');
     const content = msg.content.length > 2000
-      ? msg.content.slice(0, 2000) + '...'
+      ? [...msg.content].slice(0, 2000).join('') + '...'
       : msg.content;
     lines.push(`**${sender}**: ${content}`);
     lines.push('');
@@ -519,7 +519,7 @@ async function runQuery(
       for (const tool of tools) {
         toolCounts[tool] = (toolCounts[tool] || 0) + 1;
       }
-      const texts = content.filter(c => c.type === 'text' && c.text).map(c => (c.text as string).slice(0, 120));
+      const texts = content.filter(c => c.type === 'text' && c.text).map(c => [...(c.text as string)].slice(0, 120).join(''));
       if (tools.length) detail += ` tools=[${tools.join(',')}]`;
       if (texts.length) detail += ` text="${texts[0]}${texts[0] && texts[0].length >= 120 ? '...' : ''}"`;
 
