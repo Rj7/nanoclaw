@@ -228,7 +228,8 @@ export async function readArticle(
 
     // Truncate very long articles
     if (article.content.length > 50000) {
-      article.content = [...article.content].slice(0, 50000).join('') + '\n\n[... truncated]';
+      article.content =
+        [...article.content].slice(0, 50000).join('') + '\n\n[... truncated]';
     }
 
     return article;
