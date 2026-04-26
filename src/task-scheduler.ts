@@ -1,8 +1,12 @@
-import { ChildProcess } from 'child_process';
+import { ChildProcess, exec } from 'child_process';
 import { CronExpressionParser } from 'cron-parser';
 import fs from 'fs';
 
-import { SCHEDULER_POLL_INTERVAL, TIMEZONE } from './config.js';
+import {
+  MAX_TASK_DURATION_MS,
+  SCHEDULER_POLL_INTERVAL,
+  TIMEZONE,
+} from './config.js';
 import {
   ContainerOutput,
   runContainerAgent,
@@ -168,6 +172,12 @@ async function runTask(
     }, TASK_CLOSE_DELAY_MS);
   };
 
+  // Non-resetting wall-clock cap. CONTAINER_TIMEOUT resets on streaming
+  // output, so a chatty agent improvising a long-running loop never dies.
+  // This catches that — the scheduler will retry on the next cron tick.
+  let wallClockTimer: ReturnType<typeof setTimeout> | null = null;
+  let timedOut = false;
+
   try {
     const output = await runContainerAgent(
       group,
@@ -180,8 +190,24 @@ async function runTask(
         isScheduledTask: true,
         assistantName: group.assistantName,
       },
-      (proc, containerName) =>
-        deps.onProcess(task.chat_jid, proc, containerName, task.group_folder),
+      (proc, containerName) => {
+        wallClockTimer = setTimeout(() => {
+          timedOut = true;
+          logger.error(
+            { taskId: task.id, containerName, maxMs: MAX_TASK_DURATION_MS },
+            'Task exceeded max duration, force-killing container',
+          );
+          exec(`docker kill ${containerName}`, (err) => {
+            if (err) {
+              logger.warn(
+                { taskId: task.id, containerName, err: err.message },
+                'docker kill failed',
+              );
+            }
+          });
+        }, MAX_TASK_DURATION_MS);
+        deps.onProcess(task.chat_jid, proc, containerName, task.group_folder);
+      },
       async (streamedOutput: ContainerOutput) => {
         if (streamedOutput.result) {
           result = streamedOutput.result;
@@ -200,8 +226,11 @@ async function runTask(
     );
 
     if (closeTimer) clearTimeout(closeTimer);
+    if (wallClockTimer) clearTimeout(wallClockTimer);
 
-    if (output.status === 'error') {
+    if (timedOut) {
+      error = `Task killed after ${MAX_TASK_DURATION_MS}ms wall-clock limit`;
+    } else if (output.status === 'error') {
       error = output.error || 'Unknown error';
     } else if (output.result) {
       // Result was already forwarded to the user via the streaming callback above
@@ -209,12 +238,17 @@ async function runTask(
     }
 
     logger.info(
-      { taskId: task.id, durationMs: Date.now() - startTime },
+      { taskId: task.id, durationMs: Date.now() - startTime, timedOut },
       'Task completed',
     );
   } catch (err) {
     if (closeTimer) clearTimeout(closeTimer);
-    error = err instanceof Error ? err.message : String(err);
+    if (wallClockTimer) clearTimeout(wallClockTimer);
+    error = timedOut
+      ? `Task killed after ${MAX_TASK_DURATION_MS}ms wall-clock limit`
+      : err instanceof Error
+        ? err.message
+        : String(err);
     logger.error({ taskId: task.id, error }, 'Task failed');
   }
 

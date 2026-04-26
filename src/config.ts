@@ -56,6 +56,10 @@ export const IDLE_TIMEOUT = parseInt(
   process.env.IDLE_TIMEOUT || '10800000',
   10,
 ); // 3hr default — how long to keep container alive after last result
+export const MAX_TASK_DURATION_MS = parseInt(
+  process.env.MAX_TASK_DURATION_MS || '900000',
+  10,
+); // 15min default — non-resetting wall-clock cap for scheduled tasks
 export const MAX_CONCURRENT_CONTAINERS = Math.max(
   1,
   parseInt(process.env.MAX_CONCURRENT_CONTAINERS || '5', 10) || 5,
