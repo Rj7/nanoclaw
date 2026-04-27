@@ -534,7 +534,12 @@ async function startMessageLoop(): Promise<void> {
   }
   messageLoopRunning = true;
 
-  logger.info(`NanoClaw running (trigger: @${ASSISTANT_NAME})`);
+  const groupTriggers = Object.values(registeredGroups)
+    .map((g) => g.trigger)
+    .join(', ');
+  logger.info(
+    `NanoClaw running — registered groups: ${groupTriggers || 'none'}`,
+  );
 
   while (true) {
     try {
