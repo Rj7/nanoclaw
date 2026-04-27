@@ -7,7 +7,7 @@ import {
   IDLE_TIMEOUT,
   POLL_INTERVAL,
   TIMEZONE,
-  TRIGGER_PATTERN,
+  buildTriggerPattern,
 } from './config.js';
 import { startCredentialProxy } from './credential-proxy.js';
 import './channels/index.js';
@@ -191,9 +191,10 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   // Check if trigger is required and present
   if (group.requiresTrigger !== false) {
     const allowlistCfg = loadSenderAllowlist();
+    const triggerRe = buildTriggerPattern(group.trigger);
     const hasTrigger = missedMessages.some(
       (m) =>
-        TRIGGER_PATTERN.test(m.content.trim()) &&
+        triggerRe.test(m.content.trim()) &&
         (m.is_from_me || isTriggerAllowed(chatJid, m.sender, allowlistCfg)),
     );
     if (!hasTrigger) return true;
@@ -594,9 +595,10 @@ async function startMessageLoop(): Promise<void> {
           // context when a trigger eventually arrives.
           if (needsTrigger) {
             const allowlistCfg = loadSenderAllowlist();
+            const triggerRe = buildTriggerPattern(group.trigger);
             const hasTrigger = groupMessages.some(
               (m) =>
-                TRIGGER_PATTERN.test(m.content.trim()) &&
+                triggerRe.test(m.content.trim()) &&
                 (m.is_from_me ||
                   isTriggerAllowed(chatJid, m.sender, allowlistCfg)),
             );

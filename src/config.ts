@@ -74,6 +74,13 @@ export const TRIGGER_PATTERN = new RegExp(
   'i',
 );
 
+// Per-group trigger (e.g. "@ari"). Each registered group has its own
+// trigger_pattern; the global TRIGGER_PATTERN above is only the fallback
+// for the primary assistant.
+export function buildTriggerPattern(trigger: string): RegExp {
+  return new RegExp(`^${escapeRegex(trigger)}\\b`, 'i');
+}
+
 // Feed health monitor: alert if no new data collected within these windows
 export const FEED_HEALTH_CHECK_INTERVAL = 30 * 60 * 1000; // 30 minutes
 export const X_FEED_STALE_THRESHOLD_MS = 6 * 60 * 60 * 1000; // 6 hours
