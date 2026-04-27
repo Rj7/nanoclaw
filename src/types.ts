@@ -91,6 +91,11 @@ export interface Channel {
   setTyping?(jid: string, isTyping: boolean): Promise<void>;
   // Optional: sync group/chat names from the platform.
   syncGroups?(force: boolean): Promise<void>;
+  // Optional: identifiers the channel uses to represent the bot itself
+  // (e.g. WhatsApp phone number digits and LID digits). Used so a native
+  // mention "@<phone>" or "@<lid>" can trigger the agent in groups where
+  // the literal "@<assistant-name>" wasn't typed.
+  getSelfIdentifiers?(): string[];
 }
 
 // Callback type that channels use to deliver inbound messages

@@ -331,6 +331,17 @@ export class WhatsAppChannel implements Channel {
     return jid.endsWith('@g.us') || jid.endsWith('@s.whatsapp.net');
   }
 
+  getSelfIdentifiers(): string[] {
+    const ids: string[] = [];
+    if (this.sock?.user) {
+      const phoneUser = this.sock.user.id?.split(':')[0];
+      const lidUser = this.sock.user.lid?.split(':')[0];
+      if (phoneUser) ids.push(phoneUser);
+      if (lidUser) ids.push(lidUser);
+    }
+    return ids;
+  }
+
   async disconnect(): Promise<void> {
     this.connected = false;
     if (this.watchdogTimer) clearInterval(this.watchdogTimer);

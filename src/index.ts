@@ -7,6 +7,7 @@ import {
   IDLE_TIMEOUT,
   POLL_INTERVAL,
   TIMEZONE,
+  buildSelfMentionPattern,
   buildTriggerPattern,
 } from './config.js';
 import { startCredentialProxy } from './credential-proxy.js';
@@ -192,11 +193,17 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   if (group.requiresTrigger !== false) {
     const allowlistCfg = loadSenderAllowlist();
     const triggerRe = buildTriggerPattern(group.trigger);
-    const hasTrigger = missedMessages.some(
-      (m) =>
-        triggerRe.test(m.content.trim()) &&
-        (m.is_from_me || isTriggerAllowed(chatJid, m.sender, allowlistCfg)),
-    );
+    const selfIds = channel.getSelfIdentifiers?.() ?? [];
+    const selfMentionRe = buildSelfMentionPattern(selfIds);
+    const hasTrigger = missedMessages.some((m) => {
+      const text = m.content.trim();
+      const matches =
+        triggerRe.test(text) || (selfMentionRe?.test(text) ?? false);
+      return (
+        matches &&
+        (m.is_from_me || isTriggerAllowed(chatJid, m.sender, allowlistCfg))
+      );
+    });
     if (!hasTrigger) return true;
   }
 
@@ -596,12 +603,18 @@ async function startMessageLoop(): Promise<void> {
           if (needsTrigger) {
             const allowlistCfg = loadSenderAllowlist();
             const triggerRe = buildTriggerPattern(group.trigger);
-            const hasTrigger = groupMessages.some(
-              (m) =>
-                triggerRe.test(m.content.trim()) &&
+            const selfIds = channel.getSelfIdentifiers?.() ?? [];
+            const selfMentionRe = buildSelfMentionPattern(selfIds);
+            const hasTrigger = groupMessages.some((m) => {
+              const text = m.content.trim();
+              const matches =
+                triggerRe.test(text) || (selfMentionRe?.test(text) ?? false);
+              return (
+                matches &&
                 (m.is_from_me ||
-                  isTriggerAllowed(chatJid, m.sender, allowlistCfg)),
-            );
+                  isTriggerAllowed(chatJid, m.sender, allowlistCfg))
+              );
+            });
             if (!hasTrigger) continue;
           }
 

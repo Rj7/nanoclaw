@@ -81,6 +81,15 @@ export function buildTriggerPattern(trigger: string): RegExp {
   return new RegExp(`^${escapeRegex(trigger)}\\b`, 'i');
 }
 
+// Native channel mention of the bot itself, e.g. WhatsApp's "@<phone>" or
+// "@<lid>" tap-to-mention. Matches anywhere in the message (mentions can
+// be mid-sentence, unlike the leading @-trigger).
+export function buildSelfMentionPattern(ids: string[]): RegExp | null {
+  const cleaned = ids.filter((id) => /^\d+$/.test(id));
+  if (cleaned.length === 0) return null;
+  return new RegExp(`(?:^|\\s)@(?:${cleaned.join('|')})\\b`);
+}
+
 // Feed health monitor: alert if no new data collected within these windows
 export const FEED_HEALTH_CHECK_INTERVAL = 30 * 60 * 1000; // 30 minutes
 export const X_FEED_STALE_THRESHOLD_MS = 6 * 60 * 60 * 1000; // 6 hours
