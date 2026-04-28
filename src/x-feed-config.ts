@@ -27,8 +27,8 @@ const CONFIG_PATH = path.join(DATA_DIR, 'x-feed-config.yaml');
 
 const DEFAULTS: XFeedConfig = {
   pollIntervalMs: 180_000, // 3 minutes
-  maxScrolls: 3,
-  tweetCount: 25,
+  maxScrolls: 6,
+  tweetCount: 50,
 
   tickerPattern: '\\$[A-Z]{1,5}\\b',
 
