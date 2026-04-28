@@ -78,7 +78,11 @@ export const TRIGGER_PATTERN = new RegExp(
 // trigger_pattern; the global TRIGGER_PATTERN above is only the fallback
 // for the primary assistant.
 export function buildTriggerPattern(trigger: string): RegExp {
-  return new RegExp(`^${escapeRegex(trigger)}\\b`, 'i');
+  // Strip leading @ so the name matches with or without it. Allow the name
+  // anywhere in the message as a whole word (e.g. "ari", "@ari", "hey ari,
+  // thoughts?") — friends won't always lead with @.
+  const name = trigger.replace(/^@/, '');
+  return new RegExp(`(?:^|\\s)@?${escapeRegex(name)}\\b`, 'i');
 }
 
 // Native channel mention of the bot itself, e.g. WhatsApp's "@<phone>" or
