@@ -562,6 +562,13 @@ async function runQuery(
         seenFirstResult = true;
         log('First result seen — replay phase complete, new content will be emitted');
       }
+      // Clear the text buffer at the turn boundary. Without this, any text
+      // emitted late in this turn that wasn't flushed by a trailing tool_use
+      // leaks into the next turn's pendingText and gets concatenated +
+      // re-sent when that turn flushes mid-tool — duplicating the previous
+      // reply. The textResult below is the canonical final answer of this
+      // turn; the buffer's job is done.
+      pendingText = '';
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const resultMsg = message as any;
       const textResult = resultMsg.result || null;
