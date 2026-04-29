@@ -1,4 +1,5 @@
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 
 import { CronExpressionParser } from 'cron-parser';
@@ -11,7 +12,7 @@ import {
 } from './config.js';
 import { AvailableGroup } from './container-runner.js';
 import { createTask, deleteTask, getTaskById, updateTask } from './db.js';
-import { isValidGroupFolder } from './group-folder.js';
+import { isValidGroupFolder, resolveGroupFolderPath } from './group-folder.js';
 import { handleSubstackIpc } from './substack-integration-host.js';
 import { handleXIpc } from './x-integration-host.js';
 import { logger } from './logger.js';
@@ -19,6 +20,13 @@ import { RegisteredGroup } from './types.js';
 
 export interface IpcDeps {
   sendMessage: (jid: string, text: string) => Promise<void>;
+  // Optional: deliver an image. Channels that don't implement Channel.sendImage
+  // will reject the call; callers see an error logged in the IPC handler.
+  sendImage?: (
+    jid: string,
+    imagePath: string,
+    caption?: string,
+  ) => Promise<void>;
   registeredGroups: () => Record<string, RegisteredGroup>;
   registerGroup: (jid: string, group: RegisteredGroup) => void;
   syncGroups: (force: boolean) => Promise<void>;
@@ -29,6 +37,53 @@ export interface IpcDeps {
     availableGroups: AvailableGroup[],
     registeredJids: Set<string>,
   ) => void;
+}
+
+// Image upload safety limits.
+const MAX_IMAGE_BYTES = 16 * 1024 * 1024; // 16 MB — WhatsApp's docs cap
+const ALLOWED_IMAGE_EXTS = new Set([
+  '.jpg',
+  '.jpeg',
+  '.png',
+  '.gif',
+  '.webp',
+]);
+const VAULT_DIR = path.join(os.homedir(), 'Obsidian', 'Vault');
+const CONTAINER_GROUP_PREFIX = '/workspace/group/';
+const CONTAINER_VAULT_PREFIX = '/workspace/vault/';
+
+/**
+ * Translate a container-side path the agent provided into the corresponding
+ * host path, with strict containment checks. Only `/workspace/group/...` and
+ * `/workspace/vault/...` are accepted; anything else (including `..` escapes
+ * after resolution) throws.
+ */
+export function resolveContainerImagePath(
+  containerPath: string,
+  sourceGroup: string,
+): string {
+  if (containerPath.startsWith(CONTAINER_GROUP_PREFIX)) {
+    const rel = containerPath.slice(CONTAINER_GROUP_PREFIX.length);
+    const groupRoot = resolveGroupFolderPath(sourceGroup);
+    const resolved = path.resolve(groupRoot, rel);
+    const within = path.relative(groupRoot, resolved);
+    if (within.startsWith('..') || path.isAbsolute(within)) {
+      throw new Error(`Image path escapes group root: ${containerPath}`);
+    }
+    return resolved;
+  }
+  if (containerPath.startsWith(CONTAINER_VAULT_PREFIX)) {
+    const rel = containerPath.slice(CONTAINER_VAULT_PREFIX.length);
+    const resolved = path.resolve(VAULT_DIR, rel);
+    const within = path.relative(VAULT_DIR, resolved);
+    if (within.startsWith('..') || path.isAbsolute(within)) {
+      throw new Error(`Image path escapes vault root: ${containerPath}`);
+    }
+    return resolved;
+  }
+  throw new Error(
+    `Image path must start with ${CONTAINER_GROUP_PREFIX} or ${CONTAINER_VAULT_PREFIX}: ${containerPath}`,
+  );
 }
 
 let ipcWatcherRunning = false;
@@ -97,6 +152,76 @@ export function startIpcWatcher(deps: IpcDeps): void {
                     { chatJid: data.chatJid, sourceGroup },
                     'Unauthorized IPC message attempt blocked',
                   );
+                }
+              } else if (
+                data.type === 'image' &&
+                data.chatJid &&
+                data.path
+              ) {
+                // Same authorization model as text.
+                const targetGroup = registeredGroups[data.chatJid];
+                const authorized =
+                  isMain ||
+                  (targetGroup && targetGroup.folder === sourceGroup);
+                if (!authorized) {
+                  logger.warn(
+                    { chatJid: data.chatJid, sourceGroup },
+                    'Unauthorized IPC image attempt blocked',
+                  );
+                } else if (!deps.sendImage) {
+                  logger.warn(
+                    { chatJid: data.chatJid, sourceGroup },
+                    'IPC image dropped — channel does not support images',
+                  );
+                } else {
+                  try {
+                    const hostPath = resolveContainerImagePath(
+                      String(data.path),
+                      sourceGroup,
+                    );
+                    const ext = path.extname(hostPath).toLowerCase();
+                    if (!ALLOWED_IMAGE_EXTS.has(ext)) {
+                      throw new Error(
+                        `Unsupported image extension: ${ext || '(none)'}`,
+                      );
+                    }
+                    const stat = fs.statSync(hostPath);
+                    if (!stat.isFile()) {
+                      throw new Error('Image path is not a regular file');
+                    }
+                    if (stat.size === 0) {
+                      throw new Error('Image file is empty');
+                    }
+                    if (stat.size > MAX_IMAGE_BYTES) {
+                      throw new Error(
+                        `Image too large: ${stat.size} bytes (max ${MAX_IMAGE_BYTES})`,
+                      );
+                    }
+                    await deps.sendImage(
+                      data.chatJid,
+                      hostPath,
+                      data.caption ? String(data.caption) : undefined,
+                    );
+                    logger.info(
+                      {
+                        chatJid: data.chatJid,
+                        sourceGroup,
+                        bytes: stat.size,
+                        hasCaption: !!data.caption,
+                      },
+                      'IPC image sent',
+                    );
+                  } catch (err) {
+                    logger.warn(
+                      {
+                        chatJid: data.chatJid,
+                        sourceGroup,
+                        path: data.path,
+                        err,
+                      },
+                      'IPC image send failed',
+                    );
+                  }
                 }
               }
               fs.unlinkSync(filePath);

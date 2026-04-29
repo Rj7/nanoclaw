@@ -63,6 +63,35 @@ server.tool(
 );
 
 server.tool(
+  'send_image',
+  `Send an image to the user or group with an optional caption. Use this for charts, screenshots, or any visual you've generated or saved.
+
+PATH: Must be an absolute path under /workspace/group/ (your scratch dir) or /workspace/vault/ (the shared Obsidian vault). Anything else is rejected. Save the image first, then pass its path here — do not pass URLs or relative paths.
+
+LIMITS: Max 16 MB. Supported formats: jpg, jpeg, png, gif, webp.
+
+CAPTION: Optional. Text appears below the image in the chat. Keep it short — for longer commentary, send a follow-up text message.`,
+  {
+    path: z.string().describe('Absolute container path to the image file (e.g. "/workspace/group/charts/aaoi-rsi.png")'),
+    caption: z.string().optional().describe('Optional caption shown under the image'),
+  },
+  async (args) => {
+    const data: Record<string, string | undefined> = {
+      type: 'image',
+      chatJid,
+      path: args.path,
+      caption: args.caption || undefined,
+      groupFolder,
+      timestamp: new Date().toISOString(),
+    };
+
+    writeIpcFile(MESSAGES_DIR, data);
+
+    return { content: [{ type: 'text' as const, text: 'Image queued.' }] };
+  },
+);
+
+server.tool(
   'schedule_task',
   `Schedule a recurring or one-time task. The task will run as a full agent with access to all tools. Returns the task ID for future reference. To modify an existing task, use update_task instead.
 

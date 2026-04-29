@@ -323,6 +323,33 @@ export class WhatsAppChannel implements Channel {
     }
   }
 
+  async sendImage(
+    jid: string,
+    imagePath: string,
+    caption?: string,
+  ): Promise<void> {
+    if (!this.connected) {
+      // Images aren't queued like text — they're typically time-sensitive
+      // (charts, screenshots) and the file may be moved/deleted before we
+      // reconnect. Surface the failure so the agent can retry deliberately.
+      throw new Error('WhatsApp disconnected, cannot send image');
+    }
+    const buffer = await fs.promises.readFile(imagePath);
+    const name = this.getAssistantNameForJid(jid);
+    const prefixedCaption =
+      caption && !ASSISTANT_HAS_OWN_NUMBER
+        ? `${name}: ${caption}`
+        : caption || undefined;
+    await this.sock.sendMessage(jid, {
+      image: buffer,
+      caption: prefixedCaption,
+    });
+    logger.info(
+      { jid, bytes: buffer.length, hasCaption: !!caption },
+      'Image sent',
+    );
+  }
+
   isConnected(): boolean {
     return this.connected;
   }

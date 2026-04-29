@@ -87,6 +87,9 @@ export interface Channel {
   isConnected(): boolean;
   ownsJid(jid: string): boolean;
   disconnect(): Promise<void>;
+  // Optional: send an image with an optional caption. Channels that don't
+  // support media leave this unset and the IPC handler rejects the request.
+  sendImage?(jid: string, imagePath: string, caption?: string): Promise<void>;
   // Optional: typing indicator. Channels that support it implement it.
   setTyping?(jid: string, isTyping: boolean): Promise<void>;
   // Optional: sync group/chat names from the platform.
