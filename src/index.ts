@@ -313,8 +313,8 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
           typeof result.result === 'string'
             ? result.result
             : JSON.stringify(result.result);
-        // Strip <internal>...</internal> blocks — agent uses these for internal reasoning
-        const text = raw.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
+        // Drop internal-reasoning tags (handles mismatched/orphan variants too).
+        const text = formatOutbound(raw);
         logger.info(
           { group: group.name },
           `Agent output: ${[...raw].slice(0, 200).join('')}`,

@@ -25,7 +25,16 @@ export function formatMessages(
 }
 
 export function stripInternalTags(text: string): string {
-  return text.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
+  // Strip paired internal-reasoning blocks. The agent sometimes confuses
+  // its two tag conventions and emits a mismatched pair like
+  // <internal>...</thinking> — so accept either tag name on either side.
+  const stripped = text.replace(
+    /<(internal|thinking)>[\s\S]*?<\/(internal|thinking)>/g,
+    '',
+  );
+  // Mop up any orphaned open/close tag the agent left dangling on its own
+  // (e.g. just "</thinking>" on a line). Without this they leak to chat.
+  return stripped.replace(/<\/?(internal|thinking)>/g, '').trim();
 }
 
 export function formatOutbound(rawText: string): string {
