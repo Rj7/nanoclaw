@@ -38,6 +38,10 @@ const TICKER_RE = /\$[A-Z]{1,5}\b/g;
 let running = true;
 let pollCount = 0;
 let lastBrowserRestart = Date.now();
+// X added a "Sort by" menu on the Following tab (Popular | Recent), defaulting
+// to Popular. We must select Recent every browser session — the choice is held
+// in SPA state and resets on context restart.
+let sortedToRecent = false;
 
 function extractTickers(text: string): string | null {
   const matches = text.match(TICKER_RE);
@@ -125,12 +129,14 @@ async function pollCycle(): Promise<void> {
     logger.info('Periodic browser restart');
     await browser.close();
     lastBrowserRestart = Date.now();
+    sortedToRecent = false;
   }
 
   // Ensure browser is running
   if (!browser.isOpen()) {
     await browser.launch();
     lastBrowserRestart = Date.now();
+    sortedToRecent = false;
   }
 
   const page = await browser.getPage();
@@ -142,13 +148,112 @@ async function pollCycle(): Promise<void> {
   });
   await page.waitForTimeout(2000);
 
-  // Click "Following" tab (not the default "For you" algorithmic feed)
-  const followingTab = page.locator('a[role="tab"][href="/home"]', {
-    hasText: 'Following',
-  });
-  if (await followingTab.isVisible().catch(() => false)) {
-    await followingTab.click();
-    await page.waitForTimeout(2000);
+  // Wait for the tab strip to render. X hydrates tabs after DOMContentLoaded,
+  // so a fixed 2s after goto isn't always enough on a cold browser.
+  await page
+    .waitForSelector('[role="tab"]', { timeout: 8000 })
+    .catch(() => null);
+
+  // Locate the home-feed tab strip. X currently renders tabs as
+  // <div role="tab"> (no href), so we find them by role + text.
+  // Returns the bbox of the tab matching the requested label.
+  const findTabBbox = async (
+    label: string,
+  ): Promise<{
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    selected: boolean;
+  } | null> => {
+    return (await page.evaluate(`(function(target) {
+      var tabs = document.querySelectorAll('[role="tab"]');
+      for (var i = 0; i < tabs.length; i++) {
+        if ((tabs[i].textContent || '').trim().indexOf(target) === 0) {
+          var r = tabs[i].getBoundingClientRect();
+          return {
+            x: r.x, y: r.y, w: r.width, h: r.height,
+            selected: tabs[i].getAttribute('aria-selected') === 'true',
+          };
+        }
+      }
+      return null;
+    })('${label}')`)) as {
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+      selected: boolean;
+    } | null;
+  };
+
+  // Switch to Following tab if not already there. Click the center of the
+  // tab to switch (clicking near the right-edge caret only opens Sort by).
+  const followingBbox = await findTabBbox('Following');
+  if (!followingBbox) {
+    logger.warn('Following tab not found in DOM — X markup may have changed');
+  } else {
+    if (!followingBbox.selected) {
+      await page.mouse.click(
+        followingBbox.x + followingBbox.w / 2,
+        followingBbox.y + followingBbox.h / 2,
+      );
+      await page.waitForTimeout(1500);
+    }
+
+    // Set sort to Recent. The Following tab has a small caret SVG near its
+    // right edge that opens a "Sort by" menu (Popular | Recent). Default is
+    // Popular which returns very few tweets. The SVG itself has
+    // pointer-events:none — clicks must land on the wrapper, so we click
+    // a few pixels in from the tab's right edge. Selection persists in
+    // SPA state across polls and resets when the browser context restarts.
+    if (!sortedToRecent) {
+      const tryOpenAndSelect = async (): Promise<{
+        clicked: boolean;
+        labels: string[];
+      }> => {
+        const bb = (await findTabBbox('Following')) || followingBbox;
+        await page.mouse.click(bb.x + bb.w - 8, bb.y + bb.h / 2);
+        await page.waitForTimeout(1200);
+        return (await page.evaluate(`(function() {
+          var items = document.querySelectorAll('[role="menuitem"], [role="menuitemradio"]');
+          var labels = [];
+          var clicked = false;
+          for (var i = 0; i < items.length; i++) {
+            var label = (items[i].textContent || '').trim();
+            labels.push(label);
+            if (!clicked && label === 'Recent') {
+              items[i].click();
+              clicked = true;
+            }
+          }
+          return { clicked: clicked, labels: labels };
+        })()`)) as { clicked: boolean; labels: string[] };
+      };
+
+      try {
+        let result = await tryOpenAndSelect();
+        if (!result.clicked && result.labels.length === 0) {
+          // First click whiffed — wait for the page to settle and retry once.
+          await page.waitForTimeout(1500);
+          result = await tryOpenAndSelect();
+        }
+
+        if (result.clicked) {
+          await page.waitForTimeout(2000);
+          sortedToRecent = true;
+          logger.info('Following sort set to Recent');
+        } else {
+          await page.keyboard.press('Escape').catch(() => {});
+          logger.warn(
+            { menuItems: result.labels },
+            'Sort by menu did not expose a Recent option',
+          );
+        }
+      } catch (err) {
+        logger.warn({ err: String(err) }, 'Sort menu interaction failed');
+      }
+    }
   }
 
   // Check login
@@ -173,8 +278,8 @@ async function pollCycle(): Promise<void> {
     config.maxScrolls,
   );
 
+  logger.info({ pollCount, scraped: tweets.length }, 'Poll scraped');
   if (tweets.length === 0) {
-    logger.debug({ pollCount }, 'No tweets found on feed');
     return;
   }
 
