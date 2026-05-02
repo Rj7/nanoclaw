@@ -52,6 +52,11 @@ export interface NewMessage {
   timestamp: string;
   is_from_me?: boolean;
   is_bot_message?: boolean;
+  replyTo?: {
+    id: string;
+    senderName?: string;
+    preview: string;
+  };
 }
 
 export interface ScheduledTask {
@@ -67,6 +72,7 @@ export interface ScheduledTask {
   last_result: string | null;
   status: 'active' | 'paused' | 'completed';
   created_at: string;
+  model?: string | null;
 }
 
 export interface TaskRunLog {

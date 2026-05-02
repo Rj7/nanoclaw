@@ -143,6 +143,14 @@ function createSchema(database: Database.Database): void {
     /* column already exists */
   }
 
+  // Per-task model override ('sonnet', 'opus', 'haiku' alias or full ID).
+  // NULL means use SDK default.
+  try {
+    database.exec(`ALTER TABLE scheduled_tasks ADD COLUMN model TEXT`);
+  } catch {
+    /* column already exists */
+  }
+
   // Add is_bot_message column if it doesn't exist (migration for existing DBs)
   try {
     database.exec(
@@ -152,6 +160,13 @@ function createSchema(database: Database.Database): void {
     database
       .prepare(`UPDATE messages SET is_bot_message = 1 WHERE content LIKE ?`)
       .run(`${ASSISTANT_NAME}:%`);
+  } catch {
+    /* column already exists */
+  }
+
+  // Reply-to: ID of the message this one quotes (WhatsApp/Telegram reply UI).
+  try {
+    database.exec(`ALTER TABLE messages ADD COLUMN reply_to_id TEXT`);
   } catch {
     /* column already exists */
   }
@@ -351,7 +366,7 @@ export function setLastGroupSync(): void {
  */
 export function storeMessage(msg: NewMessage): void {
   db.prepare(
-    `INSERT OR REPLACE INTO messages (id, chat_jid, sender, sender_name, content, timestamp, is_from_me, is_bot_message) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT OR REPLACE INTO messages (id, chat_jid, sender, sender_name, content, timestamp, is_from_me, is_bot_message, reply_to_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     msg.id,
     msg.chat_jid,
@@ -361,7 +376,23 @@ export function storeMessage(msg: NewMessage): void {
     msg.timestamp,
     msg.is_from_me ? 1 : 0,
     msg.is_bot_message ? 1 : 0,
+    msg.replyTo?.id ?? null,
   );
+}
+
+export function getMessageById(
+  chatJid: string,
+  id: string,
+):
+  | { id: string; sender_name: string; content: string; timestamp: string }
+  | undefined {
+  return db
+    .prepare(
+      `SELECT id, sender_name, content, timestamp FROM messages WHERE chat_jid = ? AND id = ?`,
+    )
+    .get(chatJid, id) as
+    | { id: string; sender_name: string; content: string; timestamp: string }
+    | undefined;
 }
 
 /**
@@ -436,20 +467,47 @@ export function getMessagesSince(
   // Filter bot messages using both the is_bot_message flag AND the content
   // prefix as a backstop for messages written before the migration ran.
   // Subquery takes the N most recent, outer query re-sorts chronologically.
+  // Self-join to materialize reply-to context so scrollback sees it too.
   const sql = `
     SELECT * FROM (
-      SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me
-      FROM messages
-      WHERE chat_jid = ? AND timestamp > ?
-        AND is_bot_message = 0 AND content NOT LIKE ?
-        AND content != '' AND content IS NOT NULL
-      ORDER BY timestamp DESC
+      SELECT m.id, m.chat_jid, m.sender, m.sender_name, m.content, m.timestamp,
+             m.is_from_me, m.reply_to_id,
+             q.sender_name AS reply_sender_name, q.content AS reply_content
+      FROM messages m
+      LEFT JOIN messages q ON q.id = m.reply_to_id AND q.chat_jid = m.chat_jid
+      WHERE m.chat_jid = ? AND m.timestamp > ?
+        AND m.is_bot_message = 0 AND m.content NOT LIKE ?
+        AND m.content != '' AND m.content IS NOT NULL
+      ORDER BY m.timestamp DESC
       LIMIT ?
     ) ORDER BY timestamp
   `;
-  return db
+  const rows = db
     .prepare(sql)
-    .all(chatJid, sinceTimestamp, `${botPrefix}:%`, limit) as NewMessage[];
+    .all(chatJid, sinceTimestamp, `${botPrefix}:%`, limit) as Array<
+    NewMessage & {
+      reply_to_id?: string | null;
+      reply_sender_name?: string | null;
+      reply_content?: string | null;
+    }
+  >;
+  return rows.map((r) => {
+    const { reply_to_id, reply_sender_name, reply_content, ...rest } = r;
+    if (reply_to_id && reply_content) {
+      return {
+        ...rest,
+        replyTo: {
+          id: reply_to_id,
+          senderName: reply_sender_name || undefined,
+          preview:
+            reply_content.length > 240
+              ? reply_content.slice(0, 240) + '…'
+              : reply_content,
+        },
+      };
+    }
+    return rest;
+  });
 }
 
 export function createTask(
@@ -499,7 +557,7 @@ export function updateTask(
   updates: Partial<
     Pick<
       ScheduledTask,
-      'prompt' | 'schedule_type' | 'schedule_value' | 'next_run' | 'status'
+      'prompt' | 'schedule_type' | 'schedule_value' | 'next_run' | 'status' | 'model'
     >
   >,
 ): void {
@@ -525,6 +583,10 @@ export function updateTask(
   if (updates.status !== undefined) {
     fields.push('status = ?');
     values.push(updates.status);
+  }
+  if (updates.model !== undefined) {
+    fields.push('model = ?');
+    values.push(updates.model);
   }
 
   if (fields.length === 0) return;

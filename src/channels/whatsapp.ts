@@ -19,11 +19,17 @@ import {
   GROUPS_DIR,
   STORE_DIR,
 } from '../config.js';
-import { getLastGroupSync, setLastGroupSync, updateChatName } from '../db.js';
+import {
+  getLastGroupSync,
+  getMessageById,
+  setLastGroupSync,
+  updateChatName,
+} from '../db.js';
 import { isImageMessage, processImage } from '../image.js';
 import { logger } from '../logger.js';
 import {
   Channel,
+  NewMessage,
   OnInboundMessage,
   OnChatMetadata,
   RegisteredGroup,
@@ -261,6 +267,36 @@ export class WhatsAppChannel implements Channel {
             // Skip protocol messages with no text content (encryption keys, read receipts, etc.)
             if (!content) continue;
 
+            // Reply-to context (WhatsApp's "reply to message" UI). Baileys
+            // attaches contextInfo onto the message-type-specific node.
+            const ctx =
+              normalized.extendedTextMessage?.contextInfo ||
+              normalized.imageMessage?.contextInfo ||
+              normalized.videoMessage?.contextInfo ||
+              normalized.documentMessage?.contextInfo;
+            let replyTo: NewMessage['replyTo'] | undefined;
+            if (ctx?.stanzaId && ctx.quotedMessage) {
+              const qNorm = normalizeMessageContent(ctx.quotedMessage);
+              const qText =
+                qNorm?.conversation ||
+                qNorm?.extendedTextMessage?.text ||
+                qNorm?.imageMessage?.caption ||
+                qNorm?.videoMessage?.caption ||
+                '';
+              if (qText) {
+                const prior = getMessageById(chatJid, ctx.stanzaId);
+                replyTo = {
+                  id: ctx.stanzaId,
+                  senderName:
+                    prior?.sender_name ||
+                    (ctx.participant
+                      ? ctx.participant.split('@')[0]
+                      : undefined),
+                  preview: qText.length > 240 ? qText.slice(0, 240) + '…' : qText,
+                };
+              }
+            }
+
             const sender = msg.key.participant || msg.key.remoteJid || '';
             const senderName = msg.pushName || sender.split('@')[0];
 
@@ -284,6 +320,7 @@ export class WhatsAppChannel implements Channel {
               timestamp,
               is_from_me: fromMe,
               is_bot_message: isBotMessage,
+              ...(replyTo ? { replyTo } : {}),
             });
           }
         } catch (err) {

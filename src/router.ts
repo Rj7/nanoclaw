@@ -16,7 +16,14 @@ export function formatMessages(
 ): string {
   const lines = messages.map((m) => {
     const displayTime = formatLocalTime(m.timestamp, timezone);
-    return `<message sender="${escapeXml(m.sender_name)}" time="${escapeXml(displayTime)}">${escapeXml(m.content)}</message>`;
+    const open = `<message sender="${escapeXml(m.sender_name)}" time="${escapeXml(displayTime)}">`;
+    if (m.replyTo) {
+      const senderAttr = m.replyTo.senderName
+        ? ` sender="${escapeXml(m.replyTo.senderName)}"`
+        : '';
+      return `${open}\n  <in-reply-to${senderAttr}>${escapeXml(m.replyTo.preview)}</in-reply-to>\n  ${escapeXml(m.content)}\n</message>`;
+    }
+    return `${open}${escapeXml(m.content)}</message>`;
   });
 
   const header = `<context timezone="${escapeXml(timezone)}" />\n`;

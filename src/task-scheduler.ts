@@ -189,6 +189,7 @@ async function runTask(
         isMain,
         isScheduledTask: true,
         assistantName: group.assistantName,
+        model: task.model ?? null,
       },
       (proc, containerName) => {
         wallClockTimer = setTimeout(() => {
