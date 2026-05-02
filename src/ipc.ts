@@ -41,13 +41,7 @@ export interface IpcDeps {
 
 // Image upload safety limits.
 const MAX_IMAGE_BYTES = 16 * 1024 * 1024; // 16 MB — WhatsApp's docs cap
-const ALLOWED_IMAGE_EXTS = new Set([
-  '.jpg',
-  '.jpeg',
-  '.png',
-  '.gif',
-  '.webp',
-]);
+const ALLOWED_IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp']);
 const VAULT_DIR = path.join(os.homedir(), 'Obsidian', 'Vault');
 const CONTAINER_GROUP_PREFIX = '/workspace/group/';
 const CONTAINER_VAULT_PREFIX = '/workspace/vault/';
@@ -153,16 +147,11 @@ export function startIpcWatcher(deps: IpcDeps): void {
                     'Unauthorized IPC message attempt blocked',
                   );
                 }
-              } else if (
-                data.type === 'image' &&
-                data.chatJid &&
-                data.path
-              ) {
+              } else if (data.type === 'image' && data.chatJid && data.path) {
                 // Same authorization model as text.
                 const targetGroup = registeredGroups[data.chatJid];
                 const authorized =
-                  isMain ||
-                  (targetGroup && targetGroup.folder === sourceGroup);
+                  isMain || (targetGroup && targetGroup.folder === sourceGroup);
                 if (!authorized) {
                   logger.warn(
                     { chatJid: data.chatJid, sourceGroup },
