@@ -420,6 +420,37 @@ async function runQuery(
     globalClaudeMd = fs.readFileSync(globalClaudeMdPath, 'utf-8');
   }
 
+  // Composable fragments: per-group CLAUDE.md can pull in shared instruction
+  // modules via "<!-- fragments: name1, name2 -->" anywhere in the file.
+  // Fragments live at /workspace/project/groups/_fragments/{name}.md.
+  const groupClaudeMdPath = '/workspace/group/CLAUDE.md';
+  if (fs.existsSync(groupClaudeMdPath)) {
+    const groupClaudeMd = fs.readFileSync(groupClaudeMdPath, 'utf-8');
+    const directive = groupClaudeMd.match(/<!--\s*fragments?:\s*([^>]+?)\s*-->/i);
+    if (directive) {
+      const names = directive[1]
+        .split(',')
+        .map((n) => n.trim())
+        .filter((n) => /^[A-Za-z0-9_-]+$/.test(n));
+      const fragments: string[] = [];
+      for (const name of names) {
+        const fragPath = `/workspace/project/groups/_fragments/${name}.md`;
+        if (fs.existsSync(fragPath)) {
+          fragments.push(fs.readFileSync(fragPath, 'utf-8'));
+          log(`Loaded fragment: ${name}`);
+        } else {
+          log(`Fragment not found: ${name}`);
+        }
+      }
+      if (fragments.length > 0) {
+        const composed = fragments.join('\n\n');
+        globalClaudeMd = globalClaudeMd
+          ? `${globalClaudeMd}\n\n${composed}`
+          : composed;
+      }
+    }
+  }
+
   // Discover additional directories mounted at /workspace/extra/*
   // These are passed to the SDK so their CLAUDE.md files are loaded automatically
   const extraDirs: string[] = [];
