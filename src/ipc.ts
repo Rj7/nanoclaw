@@ -41,7 +41,14 @@ export interface IpcDeps {
 
 // Image upload safety limits.
 const MAX_IMAGE_BYTES = 16 * 1024 * 1024; // 16 MB — WhatsApp's docs cap
-const ALLOWED_IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp']);
+const ALLOWED_IMAGE_EXTS = new Set([
+  '.jpg',
+  '.jpeg',
+  '.png',
+  '.webp',
+  '.gif',
+  '.mp4', // animated — gifs converted, mp4s sent as gifPlayback clip
+]);
 const VAULT_DIR = path.join(os.homedir(), 'Obsidian', 'Vault');
 const CONTAINER_GROUP_PREFIX = '/workspace/group/';
 const CONTAINER_VAULT_PREFIX = '/workspace/vault/';

@@ -64,13 +64,17 @@ server.tool(
 
 server.tool(
   'send_image',
-  `Send an image to the user or group with an optional caption. Use this for charts, screenshots, or any visual you've generated or saved.
+  `Send an image, animated GIF, or short video clip to the user or group with an optional caption. Use this for charts, screenshots, reaction GIFs, memes, or any visual you've saved.
 
-PATH: Must be an absolute path under /workspace/group/ (your scratch dir) or /workspace/vault/ (the shared Obsidian vault). Anything else is rejected. Save the image first, then pass its path here — do not pass URLs or relative paths.
+PATH: Must be an absolute path under /workspace/group/ (your scratch dir) or /workspace/vault/ (the shared Obsidian vault). Anything else is rejected. Save the file first, then pass its path here — do not pass URLs or relative paths.
 
-LIMITS: Max 16 MB. Supported formats: jpg, jpeg, png, gif, webp.
+LIMITS: Max 16 MB. Supported formats:
+  - Static: jpg, jpeg, png, webp
+  - Animated: gif, mp4 (sent as auto-playing looping clip — works for reaction GIFs)
 
-CAPTION: Optional. Text appears below the image in the chat. Keep it short — for longer commentary, send a follow-up text message.`,
+GIF reactions: if your group has a curated GIF library (e.g. /workspace/group/gifs/), pick one whose name matches the moment and send it. Don't fabricate captions or describe a GIF in text — send the actual file.
+
+CAPTION: Optional. Text appears below the media. Keep it short — for longer commentary, send a follow-up text message.`,
   {
     path: z.string().describe('Absolute container path to the image file (e.g. "/workspace/group/charts/aaoi-rsi.png")'),
     caption: z.string().optional().describe('Optional caption shown under the image'),

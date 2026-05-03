@@ -1,6 +1,10 @@
-import { exec } from 'child_process';
+import { exec, execFile } from 'child_process';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
+import { promisify } from 'util';
+
+const execFileAsync = promisify(execFile);
 
 import makeWASocket, {
   Browsers,
@@ -392,12 +396,72 @@ export class WhatsAppChannel implements Channel {
       // reconnect. Surface the failure so the agent can retry deliberately.
       throw new Error('WhatsApp disconnected, cannot send image');
     }
-    const buffer = await fs.promises.readFile(imagePath);
     const name = this.getAssistantNameForJid(jid);
     const prefixedCaption =
       caption && !ASSISTANT_HAS_OWN_NUMBER
         ? `${name}: ${caption}`
         : caption || undefined;
+
+    const ext = path.extname(imagePath).toLowerCase();
+    // .gif and .mp4 → animated. WhatsApp renders these as auto-playing
+    // looping clips when sent as video with gifPlayback: true. Sending a
+    // raw .gif as image: would freeze on the first frame (WA doesn't render
+    // animated images, only animated video).
+    const isAnimated = ext === '.gif' || ext === '.mp4';
+
+    if (isAnimated) {
+      let mp4Path = imagePath;
+      let cleanup: string | null = null;
+      if (ext === '.gif') {
+        // Convert GIF → MP4 (h264 + faststart for inline preview).
+        cleanup = path.join(
+          os.tmpdir(),
+          `nanoclaw-gif-${Date.now()}-${Math.random().toString(36).slice(2)}.mp4`,
+        );
+        try {
+          await execFileAsync('ffmpeg', [
+            '-y',
+            '-i', imagePath,
+            '-movflags', '+faststart',
+            '-pix_fmt', 'yuv420p',
+            // pad odd dimensions — h264 requires even width/height
+            '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2',
+            '-c:v', 'libx264',
+            '-an',
+            cleanup,
+          ]);
+          mp4Path = cleanup;
+        } catch (err) {
+          if (cleanup) {
+            await fs.promises.unlink(cleanup).catch(() => {});
+          }
+          throw new Error(
+            `GIF→MP4 conversion failed: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      }
+
+      try {
+        const buffer = await fs.promises.readFile(mp4Path);
+        await this.sock.sendMessage(jid, {
+          video: buffer,
+          caption: prefixedCaption,
+          gifPlayback: true,
+          mimetype: 'video/mp4',
+        });
+        logger.info(
+          { jid, bytes: buffer.length, source: ext, hasCaption: !!caption },
+          'Animated clip sent',
+        );
+      } finally {
+        if (cleanup) {
+          await fs.promises.unlink(cleanup).catch(() => {});
+        }
+      }
+      return;
+    }
+
+    const buffer = await fs.promises.readFile(imagePath);
     await this.sock.sendMessage(jid, {
       image: buffer,
       caption: prefixedCaption,
