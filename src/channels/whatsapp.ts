@@ -421,12 +421,17 @@ export class WhatsAppChannel implements Channel {
         try {
           await execFileAsync('ffmpeg', [
             '-y',
-            '-i', imagePath,
-            '-movflags', '+faststart',
-            '-pix_fmt', 'yuv420p',
+            '-i',
+            imagePath,
+            '-movflags',
+            '+faststart',
+            '-pix_fmt',
+            'yuv420p',
             // pad odd dimensions — h264 requires even width/height
-            '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2',
-            '-c:v', 'libx264',
+            '-vf',
+            'scale=trunc(iw/2)*2:trunc(ih/2)*2',
+            '-c:v',
+            'libx264',
             '-an',
             cleanup,
           ]);
