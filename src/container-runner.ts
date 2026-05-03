@@ -122,6 +122,18 @@ function buildVolumeMounts(
         readonly: true,
       });
     }
+
+    // Shared CLAUDE.md fragments — readonly. Same path the main group sees
+    // via the project mount, so the agent-runner's fragment loader works
+    // identically for all groups.
+    const fragmentsDir = path.join(GROUPS_DIR, '_fragments');
+    if (fs.existsSync(fragmentsDir)) {
+      mounts.push({
+        hostPath: fragmentsDir,
+        containerPath: '/workspace/project/groups/_fragments',
+        readonly: true,
+      });
+    }
   }
 
   // Shared data directory — writable by all groups.
