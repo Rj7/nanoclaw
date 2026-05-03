@@ -384,14 +384,26 @@ export function getMessageById(
   chatJid: string,
   id: string,
 ):
-  | { id: string; sender_name: string; content: string; timestamp: string }
+  | {
+      id: string;
+      sender_name: string;
+      content: string;
+      timestamp: string;
+      is_bot_message: number;
+    }
   | undefined {
   return db
     .prepare(
-      `SELECT id, sender_name, content, timestamp FROM messages WHERE chat_jid = ? AND id = ?`,
+      `SELECT id, sender_name, content, timestamp, is_bot_message FROM messages WHERE chat_jid = ? AND id = ?`,
     )
     .get(chatJid, id) as
-    | { id: string; sender_name: string; content: string; timestamp: string }
+    | {
+        id: string;
+        sender_name: string;
+        content: string;
+        timestamp: string;
+        is_bot_message: number;
+      }
     | undefined;
 }
 

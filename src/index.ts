@@ -32,6 +32,7 @@ import {
   getAllRegisteredGroups,
   getAllSessions,
   getAllTasks,
+  getMessageById,
   getMessagesSince,
   getNewMessages,
   getRouterState,
@@ -99,6 +100,60 @@ function loadState(): void {
 function saveState(): void {
   setRouterState('last_timestamp', lastTimestamp);
   setRouterState('last_agent_timestamp', JSON.stringify(lastAgentTimestamp));
+}
+
+// How long after a bot reply we treat any subsequent message as a continuation
+// of that conversation (no need to re-tag the bot to keep talking to it).
+const TRIGGER_CONTINUATION_MS = 5 * 60 * 1000;
+
+/**
+ * Decide whether the agent should engage on this batch of messages.
+ *
+ * Engages if any message in the batch:
+ *   1. matches the group's @-trigger or a native @-mention of the bot
+ *   2. is a reply (WhatsApp reply UI) to a message the bot itself sent
+ *   3. arrives within the continuation window after the bot last spoke
+ *
+ * Sender allowlist gates all three paths — denied senders never trigger.
+ */
+function shouldEngage(
+  chatJid: string,
+  group: RegisteredGroup,
+  messages: NewMessage[],
+  channel: Channel,
+): boolean {
+  if (group.requiresTrigger === false) return true;
+
+  const allowlistCfg = loadSenderAllowlist();
+  const triggerRe = buildTriggerPattern(group.trigger);
+  const selfIds = channel.getSelfIdentifiers?.() ?? [];
+  const selfMentionRe = buildSelfMentionPattern(selfIds);
+
+  const lastBotTs = lastAgentTimestamp[chatJid];
+  const inContinuationWindow =
+    !!lastBotTs &&
+    Date.now() - new Date(lastBotTs).getTime() < TRIGGER_CONTINUATION_MS;
+
+  return messages.some((m) => {
+    const text = m.content.trim();
+    const senderAllowed =
+      m.is_from_me || isTriggerAllowed(chatJid, m.sender, allowlistCfg);
+    if (!senderAllowed) return false;
+
+    if (triggerRe.test(text)) return true;
+    if (selfMentionRe?.test(text)) return true;
+
+    // Reply-to a bot message → continuation
+    if (m.replyTo) {
+      const original = getMessageById(chatJid, m.replyTo.id);
+      if (original?.is_bot_message) return true;
+    }
+
+    // Bot recently spoke in this chat — treat as ongoing conversation
+    if (inContinuationWindow) return true;
+
+    return false;
+  });
 }
 
 function registerGroup(jid: string, group: RegisteredGroup): void {
@@ -190,22 +245,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   }
 
   // Check if trigger is required and present
-  if (group.requiresTrigger !== false) {
-    const allowlistCfg = loadSenderAllowlist();
-    const triggerRe = buildTriggerPattern(group.trigger);
-    const selfIds = channel.getSelfIdentifiers?.() ?? [];
-    const selfMentionRe = buildSelfMentionPattern(selfIds);
-    const hasTrigger = missedMessages.some((m) => {
-      const text = m.content.trim();
-      const matches =
-        triggerRe.test(text) || (selfMentionRe?.test(text) ?? false);
-      return (
-        matches &&
-        (m.is_from_me || isTriggerAllowed(chatJid, m.sender, allowlistCfg))
-      );
-    });
-    if (!hasTrigger) return true;
-  }
+  if (!shouldEngage(chatJid, group, missedMessages, channel)) return true;
 
   let prompt = formatMessages(missedMessages, TIMEZONE);
   const imageAttachments = parseImageReferences(missedMessages);
@@ -600,28 +640,10 @@ async function startMessageLoop(): Promise<void> {
             continue;
           }
 
-          const needsTrigger = group.requiresTrigger !== false;
-
           // Only act on trigger messages.
           // Non-trigger messages accumulate in DB and get pulled as
           // context when a trigger eventually arrives.
-          if (needsTrigger) {
-            const allowlistCfg = loadSenderAllowlist();
-            const triggerRe = buildTriggerPattern(group.trigger);
-            const selfIds = channel.getSelfIdentifiers?.() ?? [];
-            const selfMentionRe = buildSelfMentionPattern(selfIds);
-            const hasTrigger = groupMessages.some((m) => {
-              const text = m.content.trim();
-              const matches =
-                triggerRe.test(text) || (selfMentionRe?.test(text) ?? false);
-              return (
-                matches &&
-                (m.is_from_me ||
-                  isTriggerAllowed(chatJid, m.sender, allowlistCfg))
-              );
-            });
-            if (!hasTrigger) continue;
-          }
+          if (!shouldEngage(chatJid, group, groupMessages, channel)) continue;
 
           // Pull all messages since lastAgentTimestamp so non-trigger
           // context that accumulated between triggers is included.
