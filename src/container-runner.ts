@@ -341,6 +341,22 @@ function buildContainerArgs(
   return args;
 }
 
+function detectFragmentDirective(groupDir: string): string[] {
+  const claudeMdPath = path.join(groupDir, 'CLAUDE.md');
+  if (!fs.existsSync(claudeMdPath)) return [];
+  try {
+    const txt = fs.readFileSync(claudeMdPath, 'utf-8');
+    const m = txt.match(/<!--\s*fragments?:\s*([^>]+?)\s*-->/i);
+    if (!m) return [];
+    return m[1]
+      .split(',')
+      .map((n) => n.trim())
+      .filter((n) => /^[A-Za-z0-9_-]+$/.test(n));
+  } catch {
+    return [];
+  }
+}
+
 export async function runContainerAgent(
   group: RegisteredGroup,
   input: ContainerInput,
@@ -370,12 +386,19 @@ export async function runContainerAgent(
     'Container mount configuration',
   );
 
+  // Detect composable CLAUDE.md fragments for operator-visible logging.
+  // The agent-runner does the actual loading inside the container; this
+  // mirrors its detection logic so we can log it from the host where stderr
+  // visibility is unreliable in streaming mode.
+  const fragmentNames = detectFragmentDirective(groupDir);
+
   logger.info(
     {
       group: group.name,
       containerName,
       mountCount: mounts.length,
       isMain: input.isMain,
+      ...(fragmentNames.length > 0 ? { fragments: fragmentNames } : {}),
     },
     'Spawning container agent',
   );
