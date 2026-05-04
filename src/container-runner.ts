@@ -254,6 +254,30 @@ function buildVolumeMounts(
     });
   }
 
+  // Live-mount portfolio src + scripts so edits in ~/git/portfolio propagate
+  // without rebuilding the container image. tools/ stays from the baked image
+  // (it's nanoclaw-controlled, lives in container/portfolio/).
+  const portfolioRepo = path.join(
+    os.homedir(),
+    'git',
+    'portfolio',
+    'trading_journal',
+  );
+  if (fs.existsSync(path.join(portfolioRepo, 'src'))) {
+    mounts.push({
+      hostPath: path.join(portfolioRepo, 'src'),
+      containerPath: '/opt/portfolio/src',
+      readonly: true,
+    });
+  }
+  if (fs.existsSync(path.join(portfolioRepo, 'scripts'))) {
+    mounts.push({
+      hostPath: path.join(portfolioRepo, 'scripts'),
+      containerPath: '/opt/portfolio/scripts',
+      readonly: true,
+    });
+  }
+
   // Mount Obsidian vault for all agents (syncs to user's phone via Obsidian Sync)
   const vaultDir = path.join(os.homedir(), 'Obsidian', 'Vault');
   if (fs.existsSync(vaultDir)) {
