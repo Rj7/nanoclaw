@@ -135,32 +135,31 @@ export async function handleXIpc(
         limit: (data.limit as number) || 50,
       });
 
-      // Always attach monitor health so the agent has objective truth
+      // Always include monitor health so the agent has objective truth
       // about feed state and doesn't conflate "no matches for my filter"
       // with "monitor is down".
       const monitor = getXFeedMonitorHealth();
+      const ageNote =
+        monitor.ageMinutes !== null
+          ? `last scrape ${monitor.ageMinutes}m ago`
+          : 'no scrape history';
+      const healthSummary = `Monitor: ${monitor.totalRows} total rows, ${ageNote}`;
 
       if (tweets.length > 0) {
         result = {
           success: true,
-          message: `Found ${tweets.length} saved tweets`,
+          message: `Found ${tweets.length} saved tweets. ${healthSummary}.`,
           data: tweets,
-          monitor,
         };
       } else {
-        const ageNote =
-          monitor.ageMinutes !== null
-            ? `last scrape ${monitor.ageMinutes}m ago`
-            : 'no scrape history';
-        const healthNote =
+        const healthVerdict =
           monitor.ageMinutes !== null && monitor.ageMinutes <= 10
             ? '(monitor healthy)'
             : '(monitor may be stale — verify before assuming filter result is the issue)';
         result = {
           success: true,
-          message: `No saved tweets matched the filter. Monitor: ${monitor.totalRows} total rows, ${ageNote} ${healthNote}. This is "filter returned empty", NOT "feed is down". Adjust your filter (broader keyword/ticker/since_hours) or call x_search if you need content beyond what your home timeline scraped.`,
+          message: `No saved tweets matched the filter. ${healthSummary} ${healthVerdict}. This is "filter returned empty", NOT "feed is down". Adjust your filter (broader keyword/ticker/since_hours) or call x_search if you need content beyond what your home timeline scraped.`,
           data: [],
-          monitor,
         };
       }
       break;
