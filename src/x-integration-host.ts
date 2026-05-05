@@ -11,7 +11,12 @@ import {
   writeIpcResult,
   type SkillResult,
 } from './skill-runner.js';
-import { searchXFeedTweets, getXFeedAuthors, getThreadChain } from './db.js';
+import {
+  getXFeedAuthors,
+  getXFeedMonitorHealth,
+  getThreadChain,
+  searchXFeedTweets,
+} from './db.js';
 
 /** X tool types that only read from the local DB — safe for non-main groups. */
 const X_READ_ONLY_TYPES = new Set([
@@ -130,33 +135,33 @@ export async function handleXIpc(
         limit: (data.limit as number) || 50,
       });
 
+      // Always attach monitor health so the agent has objective truth
+      // about feed state and doesn't conflate "no matches for my filter"
+      // with "monitor is down".
+      const monitor = getXFeedMonitorHealth();
+
       if (tweets.length > 0) {
         result = {
           success: true,
           message: `Found ${tweets.length} saved tweets`,
           data: tweets,
+          monitor,
         };
       } else {
-        // Fallback: fetch live from X using the authenticated browser session
-        logger.info({ requestId }, 'No saved tweets found, fetching live feed');
-        const liveResult = await runScript('feed', {
-          count: (data.limit as number) || 20,
-        });
-        if (liveResult.success) {
-          result = {
-            success: true,
-            message:
-              'No saved tweets matched. Fetched live feed instead (feed monitor may not be running).',
-            data: liveResult.data,
-          };
-        } else {
-          result = {
-            success: true,
-            message:
-              'No saved tweets matched and live fetch failed. Is the feed monitor or X browser session active?',
-            data: [],
-          };
-        }
+        const ageNote =
+          monitor.ageMinutes !== null
+            ? `last scrape ${monitor.ageMinutes}m ago`
+            : 'no scrape history';
+        const healthNote =
+          monitor.ageMinutes !== null && monitor.ageMinutes <= 10
+            ? '(monitor healthy)'
+            : '(monitor may be stale — verify before assuming filter result is the issue)';
+        result = {
+          success: true,
+          message: `No saved tweets matched the filter. Monitor: ${monitor.totalRows} total rows, ${ageNote} ${healthNote}. This is "filter returned empty", NOT "feed is down". Adjust your filter (broader keyword/ticker/since_hours) or call x_search if you need content beyond what your home timeline scraped.`,
+          data: [],
+          monitor,
+        };
       }
       break;
     }

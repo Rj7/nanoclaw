@@ -847,6 +847,27 @@ export function updateXFeedTweetReplyParent(
   ).run(parentUrl, tweetUrl);
 }
 
+export function getXFeedMonitorHealth(): {
+  totalRows: number;
+  lastCollectedAt: string | null;
+  ageMinutes: number | null;
+} {
+  const row = db
+    .prepare(
+      'SELECT COUNT(*) AS n, MAX(collected_at) AS last FROM x_feed_tweets',
+    )
+    .get() as { n: number; last: string | null };
+  let ageMinutes: number | null = null;
+  if (row.last) {
+    ageMinutes = Math.round((Date.now() - new Date(row.last).getTime()) / 60000);
+  }
+  return {
+    totalRows: row.n,
+    lastCollectedAt: row.last,
+    ageMinutes,
+  };
+}
+
 export function searchXFeedTweets(opts: {
   ticker?: string;
   author?: string;
