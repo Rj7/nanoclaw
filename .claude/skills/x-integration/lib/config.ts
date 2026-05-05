@@ -21,11 +21,14 @@ export const config = {
     ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
     : '/usr/bin/google-chrome'),
 
-  // Browser profile directory for persistent login sessions
-  browserDataDir: path.join(PROJECT_ROOT, 'data', 'x-feed-browser-profile'),
+  // Browser profile directory for persistent login sessions.
+  // MUST be different from the x-feed-monitor's profile (data/x-feed-browser-profile)
+  // — the monitor holds an exclusive Chromium lock 24/7. Sharing the profile
+  // makes every on-demand x_feed/x_search call fail with "Script exited with code: 1".
+  browserDataDir: path.join(PROJECT_ROOT, 'data', 'x-browser-profile'),
 
-  // Auth state marker file
-  authPath: path.join(PROJECT_ROOT, 'data', 'x-feed-auth.json'),
+  // Auth state marker file (separate from monitor's x-feed-auth.json)
+  authPath: path.join(PROJECT_ROOT, 'data', 'x-auth.json'),
 
   // Browser viewport settings
   viewport: {
