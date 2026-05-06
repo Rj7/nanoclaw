@@ -37,8 +37,12 @@ export function runSkillScript(
     });
 
     let stdout = '';
+    let stderr = '';
     proc.stdout.on('data', (data) => {
       stdout += data.toString();
+    });
+    proc.stderr.on('data', (data) => {
+      stderr += data.toString();
     });
     proc.stdin.write(JSON.stringify(args));
     proc.stdin.end();
@@ -51,9 +55,10 @@ export function runSkillScript(
     proc.on('close', (code) => {
       clearTimeout(timer);
       if (code !== 0) {
+        const tail = stderr.trim().split('\n').slice(-8).join(' | ').slice(0, 500);
         resolve({
           success: false,
-          message: `Script exited with code: ${code}`,
+          message: `Script exited with code ${code}${tail ? `: ${tail}` : ''}`,
         });
         return;
       }

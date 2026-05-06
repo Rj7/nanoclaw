@@ -859,7 +859,9 @@ export function getXFeedMonitorHealth(): {
     .get() as { n: number; last: string | null };
   let ageMinutes: number | null = null;
   if (row.last) {
-    ageMinutes = Math.round((Date.now() - new Date(row.last).getTime()) / 60000);
+    ageMinutes = Math.round(
+      (Date.now() - new Date(row.last).getTime()) / 60000,
+    );
   }
   return {
     totalRows: row.n,
