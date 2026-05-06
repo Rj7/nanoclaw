@@ -55,7 +55,12 @@ export function runSkillScript(
     proc.on('close', (code) => {
       clearTimeout(timer);
       if (code !== 0) {
-        const tail = stderr.trim().split('\n').slice(-8).join(' | ').slice(0, 500);
+        const tail = stderr
+          .trim()
+          .split('\n')
+          .slice(-8)
+          .join(' | ')
+          .slice(0, 500);
         resolve({
           success: false,
           message: `Script exited with code ${code}${tail ? `: ${tail}` : ''}`,
