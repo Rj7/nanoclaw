@@ -26,6 +26,7 @@ interface ContainerInput {
   chatJid: string;
   isMain: boolean;
   isScheduledTask?: boolean;
+  taskId?: string;
   assistantName?: string;
   imageAttachments?: Array<{ relativePath: string; mediaType: string }>;
   model?: string | null;
@@ -513,6 +514,7 @@ async function runQuery(
             NANOCLAW_CHAT_JID: containerInput.chatJid,
             NANOCLAW_GROUP_FOLDER: containerInput.groupFolder,
             NANOCLAW_IS_MAIN: containerInput.isMain ? '1' : '0',
+            ...(containerInput.taskId ? { NANOCLAW_TASK_ID: containerInput.taskId } : {}),
           },
         },
         ...(containerInput.isMain ? {

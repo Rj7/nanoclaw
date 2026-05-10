@@ -18,6 +18,7 @@ const TASKS_DIR = path.join(IPC_DIR, 'tasks');
 // Context from environment variables (set by the agent runner)
 const chatJid = process.env.NANOCLAW_CHAT_JID!;
 const groupFolder = process.env.NANOCLAW_GROUP_FOLDER!;
+const taskId = process.env.NANOCLAW_TASK_ID;
 const isMain = process.env.NANOCLAW_IS_MAIN === '1';
 
 function writeIpcFile(dir: string, data: object): string {
@@ -53,6 +54,7 @@ server.tool(
       text: args.text,
       sender: args.sender || undefined,
       groupFolder,
+      taskId,
       timestamp: new Date().toISOString(),
     };
 

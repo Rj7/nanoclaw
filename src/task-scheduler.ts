@@ -188,6 +188,7 @@ async function runTask(
         chatJid: task.chat_jid,
         isMain,
         isScheduledTask: true,
+        taskId: task.id,
         assistantName: group.assistantName,
         model: task.model ?? null,
       },
