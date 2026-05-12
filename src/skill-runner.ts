@@ -30,11 +30,15 @@ export function runSkillScript(
   );
 
   return new Promise((resolve) => {
-    const proc = spawn('npx', ['tsx', scriptPath], {
-      cwd: process.cwd(),
-      env: { ...process.env, NANOCLAW_ROOT: process.cwd() },
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
+    const proc = spawn(
+      'xvfb-run',
+      ['-a', '--server-args=-screen 0 1280x1024x24', 'npx', 'tsx', scriptPath],
+      {
+        cwd: process.cwd(),
+        env: { ...process.env, NANOCLAW_ROOT: process.cwd() },
+        stdio: ['pipe', 'pipe', 'pipe'],
+      },
+    );
 
     let stdout = '';
     let stderr = '';
