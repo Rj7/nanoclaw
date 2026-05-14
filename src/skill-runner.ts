@@ -29,13 +29,20 @@ export function runSkillScript(
     `${script}.ts`,
   );
 
+  const nodeBin = path.dirname(process.execPath);
+  const childPath = `${nodeBin}:${process.env.PATH ?? ''}`;
+
   return new Promise((resolve) => {
     const proc = spawn(
       'xvfb-run',
       ['-a', '--server-args=-screen 0 1280x1024x24', 'npx', 'tsx', scriptPath],
       {
         cwd: process.cwd(),
-        env: { ...process.env, NANOCLAW_ROOT: process.cwd() },
+        env: {
+          ...process.env,
+          NANOCLAW_ROOT: process.cwd(),
+          PATH: childPath,
+        },
         stdio: ['pipe', 'pipe', 'pipe'],
       },
     );
