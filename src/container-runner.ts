@@ -335,6 +335,7 @@ function buildContainerArgs(
     'IBKR_FLEX_QUERY_ID',
     'IBKR_ACCOUNT_ID',
     'POLYGON_API_KEY',
+    'GROQ_API_KEY',
   ]);
   for (const [key, value] of Object.entries(envKeys)) {
     if (value) args.push('-e', `${key}=${value}`);
