@@ -916,28 +916,53 @@ export function searchXFeedTweets(opts: {
 }
 
 /**
- * Walk the reply chain upward from a tweet URL to the thread root.
- * Returns tweets in chronological order (root first).
+ * Reconstruct a tweet thread around a URL: walk upward via in_reply_to to the
+ * root, then walk downward by finding tweets from the same author that reply
+ * to each link in the chain (Twitter "self-thread" continuation). Returns
+ * tweets in chronological order (root first).
  */
 export function getThreadChain(tweetUrl: string): XFeedTweetRow[] {
-  const MAX_THREAD_DEPTH = 20;
-  const chain: XFeedTweetRow[] = [];
+  const MAX_THREAD_DEPTH = 40;
+  const byUrl = db.prepare('SELECT * FROM x_feed_tweets WHERE tweet_url = ?');
+  const childByAuthor = db.prepare(
+    `SELECT * FROM x_feed_tweets
+     WHERE in_reply_to = ? AND LOWER(handle) = LOWER(?)
+     ORDER BY tweet_time ASC, collected_at ASC
+     LIMIT 1`,
+  );
+
+  const upward: XFeedTweetRow[] = [];
   const seen = new Set<string>();
-  const stmt = db.prepare('SELECT * FROM x_feed_tweets WHERE tweet_url = ?');
   let currentUrl: string | null = tweetUrl;
 
   while (
     currentUrl &&
     !seen.has(currentUrl) &&
-    chain.length < MAX_THREAD_DEPTH
+    upward.length < MAX_THREAD_DEPTH
   ) {
     seen.add(currentUrl);
-    const row = stmt.get(currentUrl) as XFeedTweetRow | undefined;
+    const row = byUrl.get(currentUrl) as XFeedTweetRow | undefined;
     if (!row) break;
-    chain.unshift(row); // prepend — building from leaf to root
+    upward.unshift(row);
     currentUrl = row.in_reply_to?.startsWith('https://')
       ? row.in_reply_to
       : null;
+  }
+
+  if (upward.length === 0) return upward;
+
+  const author = upward[upward.length - 1].handle;
+  const chain: XFeedTweetRow[] = [...upward];
+  let leafUrl: string | null = chain[chain.length - 1].tweet_url;
+
+  while (leafUrl && chain.length < MAX_THREAD_DEPTH) {
+    const next = childByAuthor.get(leafUrl, author) as
+      | XFeedTweetRow
+      | undefined;
+    if (!next || seen.has(next.tweet_url)) break;
+    seen.add(next.tweet_url);
+    chain.push(next);
+    leafUrl = next.tweet_url;
   }
 
   return chain;

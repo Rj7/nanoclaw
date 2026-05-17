@@ -5,6 +5,9 @@
  * This is the entry point for X integration in the host process.
  */
 
+import path from 'path';
+
+import { DATA_DIR } from './config.js';
 import { logger } from './logger.js';
 import {
   runSkillScript,
@@ -17,6 +20,61 @@ import {
   getThreadChain,
   searchXFeedTweets,
 } from './db.js';
+
+// Host filesystem paths that show up in IPC results, mapped to the container
+// paths the agent can actually Read. Agent never sees raw host paths.
+const HOST_TO_CONTAINER_PATH: Array<[string, string]> = [
+  [path.join(DATA_DIR, 'x-images'), '/workspace/x-images'],
+  [path.join(DATA_DIR, 'shared', 'x-media'), '/workspace/shared/x-media'],
+  [path.join(DATA_DIR, 'shared'), '/workspace/shared'],
+];
+
+function translatePath(p: string | null | undefined): string | null {
+  if (!p) return p ?? null;
+  for (const [host, ctr] of HOST_TO_CONTAINER_PATH) {
+    if (p.startsWith(host)) return ctr + p.slice(host.length);
+  }
+  return p;
+}
+
+function translateImagesField(images: string | null): string | null {
+  if (!images) return images;
+  return images
+    .split(',')
+    .map((s) => translatePath(s.trim()) ?? s)
+    .join(',');
+}
+
+function translateFeedRow<T extends { images?: string | null }>(row: T): T {
+  if (row.images) {
+    return { ...row, images: translateImagesField(row.images) };
+  }
+  return row;
+}
+
+function translateReadResult(data: unknown): unknown {
+  if (!data || typeof data !== 'object') return data;
+  const d = data as {
+    focal?: { imagePaths?: string[] };
+    parent_chain?: Array<{ imagePaths?: string[] }>;
+    continuation?: Array<{ imagePaths?: string[] }>;
+    media_dir?: string;
+  };
+  const fix = (t: { imagePaths?: string[] } | undefined) => {
+    if (!t || !t.imagePaths) return t;
+    return {
+      ...t,
+      imagePaths: t.imagePaths.map((p) => translatePath(p) ?? p),
+    };
+  };
+  return {
+    ...d,
+    focal: fix(d.focal),
+    parent_chain: (d.parent_chain || []).map(fix),
+    continuation: (d.continuation || []).map(fix),
+    media_dir: translatePath(d.media_dir),
+  };
+}
 
 /** X tool types that only read from the local DB — safe for non-main groups. */
 const X_READ_ONLY_TYPES = new Set([
@@ -126,6 +184,17 @@ export async function handleXIpc(
       });
       break;
 
+    case 'x_read':
+      if (!data.tweetUrl) {
+        result = { success: false, message: 'Missing tweetUrl' };
+        break;
+      }
+      result = await runScript('read', { tweet_url: data.tweetUrl });
+      if (result.success && result.data) {
+        result = { ...result, data: translateReadResult(result.data) };
+      }
+      break;
+
     case 'x_feed_query': {
       const tweets = searchXFeedTweets({
         ticker: data.ticker as string | undefined,
@@ -149,7 +218,7 @@ export async function handleXIpc(
         result = {
           success: true,
           message: `Found ${tweets.length} saved tweets. ${healthSummary}.`,
-          data: tweets,
+          data: tweets.map(translateFeedRow),
         };
       } else {
         const healthVerdict =
@@ -177,7 +246,7 @@ export async function handleXIpc(
           chain.length > 0
             ? `Thread chain: ${chain.length} tweets (root → leaf)`
             : 'Tweet not found in saved feed or no parent chain',
-        data: chain,
+        data: chain.map(translateFeedRow),
       };
       break;
     }

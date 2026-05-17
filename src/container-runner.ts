@@ -149,6 +149,18 @@ function buildVolumeMounts(
     });
   }
 
+  // Monitor-scraped tweet images (readonly). Exposed to every group so any
+  // agent can Read images attached to saved tweets without needing the full
+  // project root mount.
+  const xImagesDir = path.join(DATA_DIR, 'x-images');
+  if (fs.existsSync(xImagesDir)) {
+    mounts.push({
+      hostPath: xImagesDir,
+      containerPath: '/workspace/x-images',
+      readonly: true,
+    });
+  }
+
   // Per-group Claude sessions directory (isolated from other groups)
   // Each group gets their own .claude/ to prevent cross-group session access
   const groupSessionsDir = path.join(

@@ -464,6 +464,12 @@ registerXTool('x_search', 'Search X (Twitter) for posts matching a query. Main g
   (args) => ({ query: args.query, count: args.count || 20 }),
 );
 
+registerXTool('x_read',
+  'Read a tweet URL live: returns the focal tweet, its parent reply chain, the author\'s thread continuation, and downloads all images locally. Use this whenever a tweet URL is shared in chat — it captures everything visible on the tweet page in one call. Image paths are returned as `imagePaths`; call Read on each path to view image contents. Main group only.',
+  { tweet_url: z.string().describe('The tweet URL (e.g., https://x.com/user/status/123)') },
+  (args) => ({ tweetUrl: args.tweet_url }),
+);
+
 // --- X Feed Query (saved tweets from feed monitor) ---
 
 registerXTool('x_feed_query',
