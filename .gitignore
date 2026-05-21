@@ -44,3 +44,7 @@ agents-sdk-docs
 .claude/skills/**/*.js.map
 .claude/skills/**/*.d.ts
 .claude/skills/**/*.d.ts.map
+
+# Python bytecode
+__pycache__/
+*.pyc

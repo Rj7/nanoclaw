@@ -25,8 +25,7 @@ import {
 // paths the agent can actually Read. Agent never sees raw host paths.
 const HOST_TO_CONTAINER_PATH: Array<[string, string]> = [
   [path.join(DATA_DIR, 'x-images'), '/workspace/x-images'],
-  [path.join(DATA_DIR, 'shared', 'x-media'), '/workspace/shared/x-media'],
-  [path.join(DATA_DIR, 'shared'), '/workspace/shared'],
+  [path.join(DATA_DIR, 'cross-agent'), '/workspace/cross-agent'],
 ];
 
 function translatePath(p: string | null | undefined): string | null {

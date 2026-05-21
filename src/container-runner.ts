@@ -137,14 +137,14 @@ function buildVolumeMounts(
     }
   }
 
-  // Shared data directory — writable by all groups.
-  // Used for cross-group signals (e.g. Neo publishes portfolio tickers,
-  // Rot writes market signals that Neo reads in morning briefings).
-  const sharedDir = path.join(DATA_DIR, 'shared');
-  if (fs.existsSync(sharedDir)) {
+  // Cross-agent data directory — writable by all groups.
+  // Used for cross-group state (e.g. Neo publishes portfolio tickers,
+  // Rot writes signals/findings that Neo reads in morning briefings).
+  const crossAgentDir = path.join(DATA_DIR, 'cross-agent');
+  if (fs.existsSync(crossAgentDir)) {
     mounts.push({
-      hostPath: sharedDir,
-      containerPath: '/workspace/shared',
+      hostPath: crossAgentDir,
+      containerPath: '/workspace/cross-agent',
       readonly: false,
     });
   }

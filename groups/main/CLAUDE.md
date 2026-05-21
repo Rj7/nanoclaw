@@ -189,15 +189,12 @@ TICKER | Entry reason | Date added | Key levels
 
 ---
 
-## Shared Signals (`/workspace/shared/`)
+## Cross-Agent State (`/workspace/cross-agent/`)
 
-A shared directory writable by both you and Neo. Used for cross-agent coordination.
+A directory writable by all agents. Used for cross-agent coordination — operational state, not knowledge. (For knowledge, write to the Obsidian vault.)
 
 *You READ:*
 - `portfolio_tickers.json` — Neo's open positions. Check this during feed scans to know which tickers are held.
-
-*You OWN:*
-- `signals.jsonl` — append when you find material news, sentiment shifts, or price alerts for a held ticker. Neo digests these in the morning briefing alongside other data sources. Only write for held positions, not general watchlist chatter.
 
 ## Admin Context
 

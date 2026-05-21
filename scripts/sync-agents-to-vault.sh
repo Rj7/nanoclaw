@@ -23,6 +23,12 @@ DB="${REPO}/store/messages.db"
 # Always-synced shared file.
 cp "${REPO}/groups/global/CLAUDE.md" "${VAULT}/shared/global-CLAUDE.md" 2>/dev/null || true
 
+# Regenerate Vault/shared/portfolio.md from data/cross-agent/portfolio_tickers.json.
+# Phone-visible mirror of the canonical JSON.
+NANOCLAW_REPO="$REPO" NANOCLAW_VAULT="$VAULT" \
+  "${REPO}/scripts/portfolio-md-from-json.py" \
+  >> "${REPO}/logs/portfolio-sync.log" 2>&1 || true
+
 # Iterate registered groups. Tab-separated: folder<TAB>name.
 # Reject names with slashes / dots so a malformed row can't escape VAULT.
 sqlite3 -separator $'\t' "$DB" "SELECT folder, name FROM registered_groups WHERE name IS NOT NULL AND name != '';" |

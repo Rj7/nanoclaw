@@ -3,7 +3,7 @@
 #
 # Curated subset only — see ~/git/nanoclaw-state/.gitignore for allowlist:
 #   - store/messages.db (scheduled tasks, message history)
-#   - data/shared/* (portfolio_tickers.json, signals.jsonl)
+#   - data/cross-agent/* (portfolio_tickers.json, etc.)
 #   - data/x-feed-config.yaml, data/substack-feed-config.yaml
 #   - groups/*/CLAUDE.md, MEMORY.md, memory/**
 #
@@ -32,9 +32,9 @@ sqlite3 "$REPO/store/messages.db" ".backup '$STATE/store/messages.db'" || {
   cp "$REPO/store/messages.db" "$STATE/store/messages.db"
 }
 
-# 2. data/shared/ — portfolio tickers, signals
-mkdir -p "$STATE/data/shared"
-rsync -a --delete "$REPO/data/shared/" "$STATE/data/shared/"
+# 2. data/cross-agent/ — portfolio tickers, cross-agent operational state
+mkdir -p "$STATE/data/cross-agent"
+rsync -a --delete "$REPO/data/cross-agent/" "$STATE/data/cross-agent/"
 
 # 3. Feed configs
 mkdir -p "$STATE/data"
